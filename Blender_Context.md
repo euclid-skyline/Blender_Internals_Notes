@@ -1,35 +1,59 @@
 # Blender Context (`bContext`) – Source Code Review
 
-> Workspace reviewed: `blender_fork`
->
-> This report focuses on Blender's runtime **`bContext`** system (the object behind `CTX_*` accessors such as `CTX_data_scene`, `CTX_wm_window`, etc.).
+> - Explains what Blender's runtime **`bContext`** is and where it is defined.
+> - Shows where it is first created and how it is populated during startup.
+> - Lists the main `CTX_*` functions used to update it.
+> - Highlights the key source files and common subsystems that depend on it.
 
 ## Table of Contents
 
-- [1) What Blender Context is](#1-what-blender-context-is)
-  - [Main definition files](#main-definition-files)
-  - [Verified source excerpts](#verified-source-excerpts)
-  - [What it stores](#what-it-stores)
-  - [How lookup works](#how-lookup-works)
-- [2) Where Blender Context is first created](#2-where-blender-context-is-first-created)
+- [Blender Context (`bContext`) – Source Code Review](#blender-context-bcontext--source-code-review)
+  - [Table of Contents](#table-of-contents)
+  - [1) What Blender Context is](#1-what-blender-context-is)
+    - [Main definition files](#main-definition-files)
+    - [Verified source excerpts](#verified-source-excerpts)
+    - [What it stores](#what-it-stores)
+    - [bContext class/struct diagram](#bcontext-classstruct-diagram)
+    - [How lookup works](#how-lookup-works)
+  - [2) Where Blender Context is first created](#2-where-blender-context-is-first-created)
   - [2.1 Actual creation function](#21-actual-creation-function)
+    - [Creation helper functions](#creation-helper-functions)
   - [2.2 First global creation during Blender startup](#22-first-global-creation-during-blender-startup)
   - [2.3 Where the global context gets initially populated](#23-where-the-global-context-gets-initially-populated)
-- [3) Functions used to update Blender Context](#3-functions-used-to-update-blender-context)
-  - [Core update functions](#core-update-functions)
-  - [Verified setter excerpts](#verified-setter-excerpts)
-  - [Common places where these update functions are called](#common-places-where-these-update-functions-are-called)
-- [4) Use cases that require Blender Context (`bContext *C`)](#4-use-cases-that-require-blender-context-bcontext-c)
+    - [Startup initialization](#startup-initialization)
+    - [Main / Scene / Window Manager assignment](#main--scene--window-manager-assignment)
+    - [Window-manager fix-up after file read](#window-manager-fix-up-after-file-read)
+    - [Conclusion for first global creation](#conclusion-for-first-global-creation)
+  - [2.4 `bContext` lifecycle flowchart](#24-bcontext-lifecycle-flowchart)
+    - [Reading the lifecycle](#reading-the-lifecycle)
+    - [Simple workflow](#simple-workflow)
+  - [3) Functions used to update Blender Context](#3-functions-used-to-update-blender-context)
+    - [Core update functions](#core-update-functions)
+    - [Verified setter excerpts](#verified-setter-excerpts)
+    - [Common places where these update functions are called](#common-places-where-these-update-functions-are-called)
+  - [4) Use cases that require Blender Context (`bContext *C`)](#4-use-cases-that-require-blender-context-bcontext-c)
   - [4.1 Operators and tools](#41-operators-and-tools)
+    - [Representative operator files](#representative-operator-files)
   - [4.2 Window-manager, event dispatch, and UI refresh](#42-window-manager-event-dispatch-and-ui-refresh)
+    - [Representative UI / WM files](#representative-ui--wm-files)
   - [4.3 Python API (`bpy.context`) and temporary overrides](#43-python-api-bpycontext-and-temporary-overrides)
+    - [Representative Python context files](#representative-python-context-files)
   - [4.4 Rendering and viewport engines](#44-rendering-and-viewport-engines)
+    - [Representative rendering files](#representative-rendering-files)
   - [4.5 Import / export](#45-import--export)
+    - [Representative I/O files](#representative-io-files)
   - [4.6 Undo / redo system](#46-undo--redo-system)
+    - [Representative undo files](#representative-undo-files)
   - [4.7 CLI commands and startup arguments](#47-cli-commands-and-startup-arguments)
+    - [Representative CLI files](#representative-cli-files)
   - [4.8 Tests and temporary contexts](#48-tests-and-temporary-contexts)
-- [5) Short answer summary](#5-short-answer-summary)
-- [6) Most important source files to open next](#6-most-important-source-files-to-open-next)
+    - [Representative test files](#representative-test-files)
+  - [5) Short answer summary](#5-short-answer-summary)
+    - [What is Blender Context?](#what-is-blender-context)
+    - [Where is it first created?](#where-is-it-first-created)
+    - [Which functions update it?](#which-functions-update-it)
+    - [Where is `bContext` required?](#where-is-bcontext-required)
+  - [6) Most important source files to open next](#6-most-important-source-files-to-open-next)
 
 ---
 
@@ -88,6 +112,49 @@ From the code above and the surrounding implementation, `bContext` stores:
 
 - **Window-manager context**: `manager`, `window`, `workspace`, `screen`, `area`, `region`, popup region, gizmo group, context store.
 - **Data context**: `Main *main`, `Scene *scene`, recursion state, Python context state, logging flags.
+
+### bContext class/struct diagram
+
+This diagram summarizes the main structure of `bContext` and its two major internal groups: window-manager state and data state.
+
+```mermaid
+classDiagram
+    class bContext {
+        +int thread
+        +wmContext wm
+        +dataContext data
+    }
+
+    class wmContext {
+        +wmWindowManager* manager
+        +wmWindow* window
+        +WorkSpace* workspace
+        +bScreen* screen
+        +ScrArea* area
+        +ARegion* region
+        +ARegion* region_popup
+        +wmGizmoGroup* gizmo_group
+        +bContextStore* store
+    }
+
+    class dataContext {
+        +Main* main
+        +Scene* scene
+        +int recursion
+        +bool py_init
+        +void* py_context
+        +void* py_context_orig
+    }
+
+    class bContextStore {
+        +entries
+        +used
+    }
+
+    bContext --> wmContext : contains
+    bContext --> dataContext : contains
+    wmContext --> bContextStore : optional store
+```
 
 ### How lookup works
 
@@ -207,6 +274,63 @@ The verified creation chain is:
 2. `source/blender/windowmanager/intern/wm_init_exit.cc` → `WM_init(C, ...)`
 3. `source/blender/windowmanager/intern/wm_init_exit.cc` → `wm_homefile_read_ex(C, ...)`
 4. `source/blender/blenkernel/intern/blendfile.cc` → `CTX_data_scene_set`, `CTX_data_main_set`, `CTX_wm_manager_set`, `CTX_wm_screen_set`
+
+## 2.4 `bContext` lifecycle flowchart
+
+The following flowchart summarizes the lifecycle of Blender's main runtime context and the common temporary-context pattern used by rendering, tests, and undo code.
+
+```mermaid
+flowchart TD
+    A["Application startup<br/>source/creator/creator.cc<br/>C = CTX_create()"] --> B["WM_init(C, ...)<br/>wm_init_exit.cc"]
+    B --> C["wm_homefile_read_ex(C, ...)<br/>load startup file and UI"]
+    C --> D["Populate core context<br/>CTX_data_scene_set<br/>CTX_data_main_set<br/>CTX_wm_manager_set<br/>CTX_wm_screen_set"]
+
+    D --> E["Runtime event loop and editor execution"]
+    E --> F["Per-window and per-area updates<br/>CTX_wm_window_set<br/>CTX_wm_area_set<br/>CTX_wm_region_set"]
+    F --> G["Context consumers<br/>Operators, UI, Python, Render, I/O, Undo"]
+
+    G --> H{"Temporary override or temp context?"}
+    H -->|Python override| I["CTX_py_state_push/pop<br/>CTX_store_set or temp_override()"]
+    I --> G
+
+    H -->|Temporary runtime context| J["CTX_create() for render, tests, or undo<br/>populate with CTX_*_set()"]
+    J --> K["CTX_free()"]
+    K --> E
+
+    G --> L["Normal execution continues"]
+    L --> M["Shutdown and cleanup<br/>CTX_free(C)"]
+```
+
+### Reading the lifecycle
+
+- **Create once globally** at startup with `CTX_create()`.
+- **Populate core state** when Blender loads the home/startup file and window-manager data.
+- **Continuously update** the active window / screen / area / region during the event loop.
+- **Consume the context** in operators, Python, rendering, import/export, undo, and UI code.
+- **Create short-lived temporary contexts** when a subsystem needs an isolated execution context.
+
+### Simple workflow
+
+1. **Blender starts** in `source/creator/creator.cc` and allocates the main context with `CTX_create()`.
+2. **Window-manager startup runs** through `WM_init(C, ...)` in `source/blender/windowmanager/intern/wm_init_exit.cc`.
+3. **Startup/home file is read** by `wm_homefile_read_ex(C, ...)`, which prepares the initial UI and data state.
+4. **Core context fields are populated** in `source/blender/blenkernel/intern/blendfile.cc` using:
+   - `CTX_data_scene_set(C, curscene)`
+   - `CTX_data_main_set(C, bmain)`
+   - `CTX_wm_manager_set(C, ...)`
+   - `CTX_wm_screen_set(C, ...)`
+5. **Runtime event processing updates the active UI context** with functions like:
+   - `CTX_wm_window_set(C, ...)`
+   - `CTX_wm_area_set(C, ...)`
+   - `CTX_wm_region_set(C, ...)`
+6. **Subsystems consume the context** to know the current state, including:
+   - operators
+   - Python `bpy.context`
+   - render engines
+   - import/export code
+   - undo/redo
+7. **Temporary overrides or temporary contexts may be created** for isolated work, then restored or freed.
+8. **On shutdown or end of temporary usage**, Blender releases the context with `CTX_free(C)`.
 
 ---
 

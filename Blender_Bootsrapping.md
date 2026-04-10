@@ -21,6 +21,10 @@
   - [4.5 Argument system setup and multi-pass parsing](#45-argument-system-setup-and-multi-pass-parsing)
   - [4.6 Core runtime libraries and the hand-off to the window manager](#46-core-runtime-libraries-and-the-hand-off-to-the-window-manager)
   - [4.7 Final parse and execution branch](#47-final-parse-and-execution-branch)
+  - [4.8 Background mode overview](#48-background-mode-overview)
+  - [What it is used for](#what-it-is-used-for)
+  - [How to run it from the CLI](#how-to-run-it-from-the-cli)
+  - [Source files to deep dive further](#source-files-to-deep-dive-further)
 - [5) What `WM_init()` actually initializes](#5-what-wm_init-actually-initializes)
   - [Verified startup excerpt](#verified-startup-excerpt)
   - [What happens here](#what-happens-here)
@@ -285,6 +289,58 @@ So the bootstrapping boundary is:
 
 - **GUI path** → `WM_main(C)` infinite event loop.
 - **Background / automation path** → deferred command/render/script execution, then `WM_exit()`.
+
+### 4.8 Background mode overview
+
+**Background mode** means Blender runs **without the normal interactive windowed UI/event-loop workflow**. It is mainly intended for **automation**, **batch rendering**, **CLI scripting**, **asset conversion**, and **headless execution on build servers or render nodes**.
+
+A source-level hint for its meaning appears in `source/blender/blenkernel/BKE_global.hh`:
+
+```cpp
+/**
+ * Blender is running without any Windows or OpenGLES context.
+ * Typically set by the `--background` command-line argument.
+ */
+bool background;
+```
+
+And in `source/creator/creator_args.cc`, the CLI handler enables it directly:
+
+```cpp
+static void background_mode_set()
+{
+  G.background = true;
+  BKE_sound_force_device("None");
+}
+```
+
+### What it is used for
+
+Common use-cases include:
+
+- rendering a single frame or full animation from the command line,
+- running a Python script without opening the Blender UI,
+- importing/exporting or converting data in automated pipelines,
+- CI, testing, and server-side processing.
+
+### How to run it from the CLI
+
+Use either `-b` or `--background`:
+
+```bash
+blender --background file.blend --render-frame 1
+blender -b file.blend -a
+blender --background --python my_script.py
+blender --background --factory-startup file.blend --python my_script.py
+```
+
+### Source files to deep dive further
+
+- `source/creator/creator_args.cc` — registers and handles `-b` / `--background`
+- `source/creator/creator.cc` — branches between GUI execution and background execution
+- `source/blender/blenkernel/BKE_global.hh` — defines `Global.background`
+- `source/creator/creator_signals.cc` — special signal handling for background mode
+- `source/blender/windowmanager/intern/wm_init_exit.cc` — shows what still initializes even when no normal UI loop is used
 
 ---
 

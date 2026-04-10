@@ -529,8 +529,8 @@ So some arguments **do work immediately** and can be overwritten by later file l
 | --- | --- | --- | --- |
 | `-b`, `--background` | `arg_handle_background_mode_set()` in `creator_args.cc` | `ARG_PASS_SETTINGS` | Calls `background_mode_set();`, sets `G.background = true;`, and forces `BKE_sound_force_device("None");` |
 | `-c`, `--command` | `arg_handle_command_set()` | `ARG_PASS_SETTINGS` | Implies background mode, suppresses info output, and uses `main_arg_deferred_setup(...)` for deferred execution |
-| `--factory-startup` | `arg_handle_factory_startup_set()` | `ARG_PASS_SETTINGS` | `G.factory_startup = true;` and `G.f |= G_FLAG_USERPREF_NO_SAVE_ON_EXIT;` |
-| `-d`, `--debug` | `arg_handle_debug_mode_set()` | `ARG_PASS_SETTINGS` | Sets `G.debug |= G_DEBUG;`, enables memory debug, prints build info and argument state |
+| `--factory-startup` | `arg_handle_factory_startup_set()` | `ARG_PASS_SETTINGS` | `G.factory_startup = true;` and `G.f \|= G_FLAG_USERPREF_NO_SAVE_ON_EXIT;` |
+| `-d`, `--debug` | `arg_handle_debug_mode_set()` | `ARG_PASS_SETTINGS` | Sets `G.debug \|= G_DEBUG;`, enables memory debug, prints build info and argument state |
 | `--debug-*` | `arg_handle_debug_mode_generic_set()` and related handlers | `ARG_PASS_SETTINGS` | ORs specific debug bit flags into `G.debug` |
 | `--offline-mode` / `--online-mode` | `arg_handle_internet_allow_set()` | `ARG_PASS_SETTINGS` | Sets/clears `G_FLAG_INTERNET_ALLOW` and override flags in `G.f` |
 | `-t`, `--threads` | `arg_handle_threads_set()` | `ARG_PASS_ENVIRONMENT` | Calls `BLI_system_num_threads_override_set(threads);` |

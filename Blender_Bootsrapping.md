@@ -4,6 +4,46 @@
 >
 > This report explains Blender application startup **from the source-file point of view**: entry points, startup flow, initialization functions, global startup state, and command-line option registration/processing.
 
+## Table of Contents
+
+- [Blender Application Bootstrapping – Source Code Review](#blender-application-bootstrapping--source-code-review)
+  - [Table of Contents](#table-of-contents)
+  - [1) Startup source-file map](#1-startup-source-file-map)
+  - [2) Entry points](#2-entry-points)
+    - [2.1 Primary application entry: `source/creator/creator.cc`](#21-primary-application-entry-sourcecreatorcreatorcc)
+    - [2.2 Alternative entry point for Windows launcher: `source/creator/blender_launcher_win32.c`](#22-alternative-entry-point-for-windows-launcher-sourcecreatorblender_launcher_win32c)
+    - [2.3 Alternate entry when Blender is built as a Python module](#23-alternate-entry-when-blender-is-built-as-a-python-module)
+  - [3) High-level startup flow](#3-high-level-startup-flow)
+  - [4) Detailed bootstrap path inside `creator.cc::main()`](#4-detailed-bootstrap-path-inside-creatorccmain)
+    - [4.1 Early exit safety and platform argument handling](#41-early-exit-safety-and-platform-argument-handling)
+    - [4.2 Very early debug-memory switch](#42-very-early-debug-memory-switch)
+    - [4.3 Logging, context, executable path, and runtime-global setup](#43-logging-context-executable-path-and-runtime-global-setup)
+    - [4.4 Core type and subsystem registration](#44-core-type-and-subsystem-registration)
+    - [4.5 Argument system setup and multi-pass parsing](#45-argument-system-setup-and-multi-pass-parsing)
+    - [4.6 Core runtime libraries and the hand-off to the window manager](#46-core-runtime-libraries-and-the-hand-off-to-the-window-manager)
+    - [4.7 Final parse and execution branch](#47-final-parse-and-execution-branch)
+  - [5) What `WM_init()` actually initializes](#5-what-wm_init-actually-initializes)
+    - [Verified startup excerpt](#verified-startup-excerpt)
+    - [What happens here](#what-happens-here)
+    - [Factory-startup link](#factory-startup-link)
+  - [6) Runtime-global state used during bootstrapping](#6-runtime-global-state-used-during-bootstrapping)
+    - [6.1 `Global G` and `UserDef U`](#61-global-g-and-userdef-u)
+    - [6.2 Important fields in `struct Global`](#62-important-fields-in-struct-global)
+    - [6.3 `ApplicationState app_state`](#63-applicationstate-app_state)
+  - [7) Command-line option architecture and processing](#7-command-line-option-architecture-and-processing)
+    - [7.1 Generic CLI parser used by Blender](#71-generic-cli-parser-used-by-blender)
+    - [7.2 Pass order is explicitly defined](#72-pass-order-is-explicitly-defined)
+    - [7.3 `main_args_setup()` registers the options](#73-main_args_setup-registers-the-options)
+    - [7.4 Order of arguments is semantically important](#74-order-of-arguments-is-semantically-important)
+  - [8) Important command-line switches, handlers, and effects](#8-important-command-line-switches-handlers-and-effects)
+    - [Example supporting excerpts](#example-supporting-excerpts)
+  - [9) How file loading and deferred background work are handled](#9-how-file-loading-and-deferred-background-work-are-handled)
+    - [9.1 Unknown / trailing non-option arguments become blend files](#91-unknown--trailing-non-option-arguments-become-blend-files)
+    - [9.2 Some CLI actions are explicitly deferred until the runtime is fully initialized](#92-some-cli-actions-are-explicitly-deferred-until-the-runtime-is-fully-initialized)
+  - [10) Signal and crash handler bootstrapping](#10-signal-and-crash-handler-bootstrapping)
+  - [11) Source-level conclusion](#11-source-level-conclusion)
+    - [Short answer](#short-answer)
+
 ---
 
 ## 1) Startup source-file map

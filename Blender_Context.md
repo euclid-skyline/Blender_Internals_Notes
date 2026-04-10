@@ -4,6 +4,33 @@
 >
 > This report focuses on Blender's runtime **`bContext`** system (the object behind `CTX_*` accessors such as `CTX_data_scene`, `CTX_wm_window`, etc.).
 
+## Table of Contents
+
+- [1) What Blender Context is](#1-what-blender-context-is)
+  - [Main definition files](#main-definition-files)
+  - [Verified source excerpts](#verified-source-excerpts)
+  - [What it stores](#what-it-stores)
+  - [How lookup works](#how-lookup-works)
+- [2) Where Blender Context is first created](#2-where-blender-context-is-first-created)
+  - [2.1 Actual creation function](#21-actual-creation-function)
+  - [2.2 First global creation during Blender startup](#22-first-global-creation-during-blender-startup)
+  - [2.3 Where the global context gets initially populated](#23-where-the-global-context-gets-initially-populated)
+- [3) Functions used to update Blender Context](#3-functions-used-to-update-blender-context)
+  - [Core update functions](#core-update-functions)
+  - [Verified setter excerpts](#verified-setter-excerpts)
+  - [Common places where these update functions are called](#common-places-where-these-update-functions-are-called)
+- [4) Use cases that require Blender Context (`bContext *C`)](#4-use-cases-that-require-blender-context-bcontext-c)
+  - [4.1 Operators and tools](#41-operators-and-tools)
+  - [4.2 Window-manager, event dispatch, and UI refresh](#42-window-manager-event-dispatch-and-ui-refresh)
+  - [4.3 Python API (`bpy.context`) and temporary overrides](#43-python-api-bpycontext-and-temporary-overrides)
+  - [4.4 Rendering and viewport engines](#44-rendering-and-viewport-engines)
+  - [4.5 Import / export](#45-import--export)
+  - [4.6 Undo / redo system](#46-undo--redo-system)
+  - [4.7 CLI commands and startup arguments](#47-cli-commands-and-startup-arguments)
+  - [4.8 Tests and temporary contexts](#48-tests-and-temporary-contexts)
+- [5) Short answer summary](#5-short-answer-summary)
+- [6) Most important source files to open next](#6-most-important-source-files-to-open-next)
+
 ---
 
 ## 1) What Blender Context is

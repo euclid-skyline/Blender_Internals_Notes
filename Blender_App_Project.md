@@ -16,7 +16,6 @@
   - [5.2 Direct inputs of the `blender` target](#52-direct-inputs-of-the-blender-target)
   - [5.3 Executable, library, and custom targets by kind](#53-executable-library-and-custom-targets-by-kind)
 - [6) Source-level conclusion](#6-source-level-conclusion)
-  - [Short answer](#short-answer)
 
 ---
 
@@ -304,8 +303,6 @@ This grouped view matches the source layout:
 ---
 
 ## 6) Source-level conclusion
-
-### Short answer
 
 The root `CMakeLists.txt` defines **one top-level project**:
 

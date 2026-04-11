@@ -18,6 +18,7 @@
 - [4) How the event handler system works](#4-how-the-event-handler-system-works)
   - [4.1 High-level event flow](#41-high-level-event-flow)
   - [4.2 The handler types defined by WM](#42-the-handler-types-defined-by-wm)
+    - [What each handler type is used for](#what-each-handler-type-is-used-for)
   - [4.3 Core dispatch in `wm_handlers_do_intern()`](#43-core-dispatch-in-wm_handlers_do_intern)
   - [4.4 Modal operators are installed as WM handlers](#44-modal-operators-are-installed-as-wm-handlers)
   - [4.5 Notifiers decouple changes from refresh](#45-notifiers-decouple-changes-from-refresh)
@@ -28,9 +29,13 @@
   - [5.4 Cursor and input helpers](#54-cursor-and-input-helpers)
   - [5.5 Clipboard helpers](#55-clipboard-helpers)
   - [5.6 Message bus (observer / publish-subscribe service)](#56-message-bus-observer--publish-subscribe-service)
+    - [Startup and runtime ownership](#startup-and-runtime-ownership)
+    - [API shape: publish / subscribe](#api-shape-publish--subscribe)
+    - [How dispatch happens](#how-dispatch-happens)
+    - [Where it runs in the WM loop](#where-it-runs-in-the-wm-loop)
 - [6) Mermaid diagram: event pipeline](#6-mermaid-diagram-event-pipeline)
-- [7) Source-level conclusion](#7-source-level-conclusion)
-  - [Short answer](#short-answer)
+- [7) Short Answers](#7-short-answers)
+- [8) Source-level conclusion](#8-source-level-conclusion)
 
 ---
 
@@ -636,9 +641,7 @@ This diagram matches the source-level loop in `wm.cc` and `wm_event_system.cc`:
 
 ---
 
-## 7) Source-level conclusion
-
-### Short answer
+## 7) Short Answers
 
 **What is Blender WM?**  
 It is Blender's runtime subsystem for **windows, UI event dispatch, operator invocation, notifier processing, redraw scheduling, and several desktop interaction services**.
@@ -656,8 +659,10 @@ Besides event dispatch, WM provides:
 - background job management,
 - cursor/input control,
 - clipboard integration.
+  
+## 8) Source-level conclusion
 
-**Best files to open next for deeper study:**
+Best files to open next for deeper study:
 
 1. `source/blender/windowmanager/intern/wm.cc`
 2. `source/blender/windowmanager/intern/wm_event_system.cc`

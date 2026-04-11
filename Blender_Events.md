@@ -35,8 +35,8 @@
 - [7) Mermaid diagrams](#7-mermaid-diagrams)
   - [7.1 Full event lifecycle](#71-full-event-lifecycle)
   - [7.2 Dispatch hierarchy inside the handler pass](#72-dispatch-hierarchy-inside-the-handler-pass)
-- [8) Source-level conclusion](#8-source-level-conclusion)
-  - [Short answer](#short-answer)
+- [8) Short Answers](#8-short-answers)
+- [9) Source-level conclusion](#9-source-level-conclusion)
 
 ---
 
@@ -690,9 +690,7 @@ These diagrams match the source flow in `wm_window.cc`, `wm_event_system.cc`, an
 
 ---
 
-## 8) Source-level conclusion
-
-### Short answer
+## 8) Short Answers
 
 **What are Blender events?**  
 They are `wmEvent` objects representing both **user input** and **internal WM activity** such as timers, file-select callbacks, drag-drop payloads, NDOF motion, XR actions, and window-state changes.
@@ -715,7 +713,9 @@ Each window owns a `WindowRuntime::event_queue`. Raw OS/GHOST input is normalize
 - **Timer events** are real raw `wmEventType` values such as `TIMERJOBS`, `TIMERAUTOSAVE`, and `TIMERREPORT`.
 - **UI** is primarily a **handler-dispatch category** (`WM_HANDLER_TYPE_UI`), not a separate raw event enum block.
 
-**Best source files to open next:**
+## 9) Source-level conclusion
+
+Best source files to open next:
 
 1. `source/blender/windowmanager/intern/wm_event_system.cc`
 2. `source/blender/windowmanager/intern/wm_window.cc`

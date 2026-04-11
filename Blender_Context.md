@@ -46,12 +46,12 @@
   - [Representative CLI files](#representative-cli-files)
 - [4.8 Tests and temporary contexts](#48-tests-and-temporary-contexts)
   - [Representative test files](#representative-test-files)
-- [5) Short answer summary](#5-short-answer-summary)
+- [5) Short Answers](#5-short-answers)
   - [What is Blender Context?](#what-is-blender-context)
   - [Where is it first created?](#where-is-it-first-created)
   - [Which functions update it?](#which-functions-update-it)
   - [Where is `bContext` required?](#where-is-bcontext-required)
-- [6) Most important source files to open next](#6-most-important-source-files-to-open-next)
+- [6) Source-level conclusion](#6-source-level-conclusion)
 
 ---
 
@@ -643,7 +643,7 @@ Temporary test contexts are also created explicitly.
 
 ---
 
-## 5) Short answer summary
+## 5) Short Answers
 
 ### What is Blender Context?
 
@@ -685,7 +685,9 @@ Temporary test contexts are also created explicitly.
 
 ---
 
-## 6) Most important source files to open next
+## 6) Source-level conclusion
+
+Most important source files to open next
 
 1. `source/blender/blenkernel/BKE_context.hh`
 2. `source/blender/blenkernel/intern/context.cc`

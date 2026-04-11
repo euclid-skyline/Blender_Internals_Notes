@@ -45,8 +45,8 @@
   - [9.1 Unknown / trailing non-option arguments become blend files](#91-unknown--trailing-non-option-arguments-become-blend-files)
   - [9.2 Some CLI actions are explicitly deferred until the runtime is fully initialized](#92-some-cli-actions-are-explicitly-deferred-until-the-runtime-is-fully-initialized)
 - [10) Signal and crash handler bootstrapping](#10-signal-and-crash-handler-bootstrapping)
-- [11) Source-level conclusion](#11-source-level-conclusion)
-  - [Short answer](#short-answer)
+- [11) Short Answers](#11-short-answers)
+- [12) Source-level conclusion](#12-source-level-conclusion)
 
 ---
 
@@ -930,7 +930,7 @@ This is part of bootstrapping because it changes how the process reacts to failu
 
 ---
 
-## 11) Source-level conclusion
+## 11) Short Answers
 
 From the source code, Blender bootstrapping is organized like this:
 
@@ -943,7 +943,7 @@ From the source code, Blender bootstrapping is organized like this:
    - `WM_main(C)` for the interactive GUI loop, or
    - deferred background execution + `WM_exit(C)` for headless automation.
 
-### Short answer
+## 12) Source-level conclusion
 
 If you want to understand Blender startup from the source tree, start with these files in order:
 

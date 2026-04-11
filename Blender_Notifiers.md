@@ -27,8 +27,8 @@
   - [5.3 Frame changes and animation](#53-frame-changes-and-animation)
   - [5.4 Background jobs and progress](#54-background-jobs-and-progress)
 - [6) Mermaid diagram: notifier lifecycle](#6-mermaid-diagram-notifier-lifecycle)
-- [7) Source-level conclusion](#7-source-level-conclusion)
-  - [Short answer](#short-answer)
+- [7) Short Answers](#7-short-answers)
+- [8) Source-level conclusion](#8-source-level-conclusion)
 
 ---
 
@@ -485,9 +485,7 @@ This matches the source structure closely:
 
 ---
 
-## 7) Source-level conclusion
-
-### Short answer
+## 7) Short Answers
 
 **What are Blender notifiers?**  
 They are the Window Manager's **change-notification objects** (`wmNotifier`) used to tell Blender that something in the UI or data model changed.
@@ -498,7 +496,9 @@ Code calls `WM_event_add_notifier()` or `WM_main_add_notifier()`, which queues a
 **Why are they important?**  
 They decouple **state changes** from **UI reactions**. Operators, undo, file I/O, and jobs can simply say "this changed", and the editor listeners decide what actually needs redraw or refresh.
 
-**Best source files to open next:**
+## 8) Source-level conclusion
+
+Best source files to open next:
 
 1. `source/blender/windowmanager/intern/wm_event_system.cc`
 2. `source/blender/windowmanager/WM_types.hh`

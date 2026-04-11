@@ -2,7 +2,7 @@
 
 A small collection of **source-backed notes** for understanding how Blender starts up, builds, and routes runtime state through the window-manager stack.
 
-These documents are written to accompany the local `blender_fork/` source tree and focus on **entry points, bootstrapping, context, events, notifiers, and the Window Manager**.
+These documents are written to provide some internals subjects of Blender from  source codes perspective and focus on **entry points, bootstrapping, context, events, notifiers, and the Window Manager**.
 
 ---
 

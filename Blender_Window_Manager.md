@@ -3,7 +3,7 @@
 > - Explains what Blender's **Window Manager (WM)** subsystem is and where it lives in the source tree.
 > - Shows how `WM_init()`, `WM_check()`, `WM_main()`, and `WM_exit()` fit together.
 > - Deep dives into how the event-handler pipeline dispatches input to keymaps, UI, gizmos, and modal operators.
-> - Highlights other services provided by WM, such as notifiers, operator calls, jobs, cursor control, and clipboard access.
+> - Highlights other services provided by WM, such as notifiers, the message bus, operator calls, jobs, cursor control, and clipboard access.
 
 ## Table of Contents<!-- omit from toc -->
 
@@ -27,6 +27,7 @@
   - [5.3 Background jobs](#53-background-jobs)
   - [5.4 Cursor and input helpers](#54-cursor-and-input-helpers)
   - [5.5 Clipboard helpers](#55-clipboard-helpers)
+  - [5.6 Message bus (observer / publish-subscribe service)](#56-message-bus-observer--publish-subscribe-service)
 - [6) Mermaid diagram: event pipeline](#6-mermaid-diagram-event-pipeline)
 - [7) Source-level conclusion](#7-source-level-conclusion)
   - [Short answer](#short-answer)
@@ -412,6 +413,15 @@ So the refresh path is intentionally split in two phases:
 
 That separation is a big part of why Blender's UI remains structured instead of every operator redrawing everything immediately.
 
+Notifiers are closely related to the WM message bus discussed later in section **5.6**, but they are not identical:
+
+| Mechanism | Main role | Granularity |
+| --- | --- | --- |
+| `wmNotifier` | Broad refresh/update signaling | coarse |
+| `wmMsgBus` | Observer-style publish/subscribe callbacks | fine-grained |
+
+A practical rule is: **notifiers tell Blender that some category of state changed, while the message bus lets code subscribe to specific changes.**
+
 ---
 
 ## 5) Other important functions and services provided by WM
@@ -500,6 +510,96 @@ The same API surface includes clipboard support such as:
 - `WM_clipboard_image_get(...)`
 
 So the WM is also the integration layer for common desktop-style UX services.
+
+### 5.6 Message bus (observer / publish-subscribe service)
+
+This topic fits best in the **Window Manager** document because the message bus is a **WM-owned runtime service**. It is initialized by WM startup code, created on the `wm->runtime` object, and handled during the WM runtime loop.
+
+It is **not the same thing** as either the event queue or the notifier queue:
+
+| System | Main role |
+| --- | --- |
+| `event_queue` | Raw input/runtime events such as mouse, keyboard, and timer events |
+| notifier queue | Broad "something changed" refresh signaling for editors and UI |
+| message bus | Targeted **observer / publish-subscribe** notifications for specific data/RNA changes |
+
+#### Startup and runtime ownership
+
+**File:** `source/blender/windowmanager/intern/wm_init_exit.cc`
+
+```cpp
+WM_msgbus_types_init();
+```
+
+**File:** `source/blender/windowmanager/intern/wm.cc`
+
+```cpp
+if (wm->runtime->message_bus == nullptr) {
+  wm->runtime->message_bus = WM_msgbus_create();
+}
+```
+
+So the bus is explicitly part of WM runtime setup.
+
+#### API shape: publish / subscribe
+
+**File:** `source/blender/windowmanager/message_bus/wm_message_bus.hh`
+
+```cpp
+void WM_msg_publish_with_key(wmMsgBus *mbus, wmMsgSubscribeKey *msg_key);
+wmMsgSubscribeKey *WM_msg_subscribe_with_key(wmMsgBus *mbus,
+                                             const wmMsgSubscribeKey *msg_key_test,
+                                             const wmMsgSubscribeValue *msg_val_params);
+void WM_msgbus_handle(wmMsgBus *mbus, bContext *C);
+```
+
+This API shape is exactly why the message bus is best understood as an **Observer / Publish–Subscribe pattern** implementation.
+
+#### How dispatch happens
+
+**File:** `source/blender/windowmanager/message_bus/intern/wm_message_bus.cc`
+
+```cpp
+void WM_msgbus_handle(wmMsgBus *mbus, bContext *C)
+{
+  if (mbus->messages_tag_count == 0) {
+    return;
+  }
+
+  for (wmMsgSubscribeKey &key : mbus->messages) {
+    for (wmMsgSubscribeValueLink &msg_lnk : key.values) {
+      if (msg_lnk.params.tag) {
+        msg_lnk.params.notify(C, &key, &msg_lnk.params);
+        msg_lnk.params.tag = false;
+        mbus->messages_tag_count -= 1;
+      }
+    }
+  }
+}
+```
+
+This shows the observer-style flow clearly:
+
+1. code **subscribes** with a key/value pair,
+2. some producer **publishes** or tags a message,
+3. `WM_msgbus_handle()` runs the registered `notify(...)` callbacks.
+
+#### Where it runs in the WM loop
+
+The message bus is handled during the notifier/update phase:
+
+**File:** `source/blender/windowmanager/intern/wm_event_system.cc`
+
+```cpp
+for (wmWindow &win : wm->windows) {
+  CTX_wm_window_set(C, &win);
+  WM_msgbus_handle(wm->runtime->message_bus, C);
+}
+```
+
+So while it is related to redraw/update behavior, it is still a **separate subsystem** from the raw event queue and from the classic notifier queue.
+
+In other words, notifiers and the message bus are **complementary WM notification mechanisms**: notifiers are broader and more UI-facing, while the message bus is more precise and subscription-driven.
 
 ---
 

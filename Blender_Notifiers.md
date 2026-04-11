@@ -12,6 +12,7 @@
   - [2.1 Core definition](#21-core-definition)
   - [2.2 Packed type layout](#22-packed-type-layout)
   - [2.3 Notifier vs event](#23-notifier-vs-event)
+  - [2.4 Relation to the WM message bus](#24-relation-to-the-wm-message-bus)
 - [3) How notifiers are created and queued](#3-how-notifiers-are-created-and-queued)
   - [3.1 Public APIs used by callers](#31-public-apis-used-by-callers)
   - [3.2 Internal queueing and deduplication](#32-internal-queueing-and-deduplication)
@@ -40,10 +41,10 @@
 | `source/blender/windowmanager/intern/wm_event_system.cc` | `wm_event_add_notifier_intern`, `wm_event_do_notifiers` | Queueing, deduplication, and delivery |
 | `source/blender/editors/screen/area.cc` | `ED_region_do_listen`, `ED_area_do_listen` | Region/area listeners that react to notifiers |
 | `source/blender/editors/screen/screen_edit.cc` | `ED_screen_do_listen` | Screen-level listener reactions |
-| `source/blender/windowmanager/intern/wm_files.cc` | `WM_event_add_notifier(C, NC_WM | ND_FILEREAD, ...)` | File-read / save examples |
-| `source/blender/editors/undo/ed_undo.cc` | `WM_event_add_notifier(C, NC_WM | ND_UNDO, ...)` | Undo / redo notifier examples |
-| `source/blender/editors/screen/screen_ops.cc` | `WM_event_add_notifier(C, NC_SCENE | ND_FRAME, scene)` | Frame-change notifier examples |
-| `source/blender/windowmanager/intern/wm_jobs.cc` | `WM_event_add_notifier_ex(..., NC_WM | ND_JOB, ...)` | Job progress / completion notifications |
+| `source/blender/windowmanager/intern/wm_files.cc` | `WM_event_add_notifier(..., file-read type, ...)` | File-read / save examples |
+| `source/blender/editors/undo/ed_undo.cc` | `WM_event_add_notifier(..., undo type, ...)` | Undo / redo notifier examples |
+| `source/blender/editors/screen/screen_ops.cc` | `WM_event_add_notifier(..., frame-change type, ...)` | Frame-change notifier examples |
+| `source/blender/windowmanager/intern/wm_jobs.cc` | `WM_event_add_notifier_ex(..., job type, ...)` | Job progress / completion notifications |
 
 ---
 
@@ -124,6 +125,28 @@ This distinction is important:
 | `wmNotifier` | Post-change notification saying some part of the UI/data should react or refresh |
 
 So notifiers are **not the same thing as input events**. They are the WM's decoupled refresh/update messaging mechanism.
+
+### 2.4 Relation to the WM message bus
+
+Yes - they are related, but they are **not the same mechanism**.
+
+| Mechanism | Main role | Typical granularity |
+| --- | --- | --- |
+| `wmNotifier` queue | Broad **"something changed"** refresh signaling | screen / area / region listener updates |
+| WM message bus (`wmMsgBus`) | Targeted **publish/subscribe** callbacks | specific RNA/property/key subscriptions |
+
+The source-level relationship is that both belong to the Window Manager runtime update path. Notifiers propagate coarse refresh information through listeners, while the message bus delivers more focused observer-style callbacks.
+
+**File:** `source/blender/windowmanager/intern/wm_event_system.cc`
+
+```cpp
+/* All emitted messages are handled here. */
+if (wm->runtime->message_bus != nullptr) {
+  WM_msgbus_handle(wm->runtime->message_bus, C);
+}
+```
+
+So if a reader wants the deeper explanation of Blender's observer / pub-sub service, the best place to continue is [`Blender_Window_Manager.md`](./Blender_Window_Manager.md#56-message-bus-observer--publish-subscribe-service), section **5.6 Message bus (observer / publish-subscribe service)**.
 
 ---
 

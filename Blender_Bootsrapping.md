@@ -11,6 +11,7 @@
 - [2) Entry points](#2-entry-points)
   - [2.1 Primary application entry: `source/creator/creator.cc`](#21-primary-application-entry-sourcecreatorcreatorcc)
   - [2.2 Alternative entry point for Windows launcher: `source/creator/blender_launcher_win32.c`](#22-alternative-entry-point-for-windows-launcher-sourcecreatorblender_launcher_win32c)
+    - [Relation between `wWinMain()` and `creator.cc::main()` on Windows](#relation-between-wwinmain-and-creatorccmain-on-windows)
   - [2.3 Alternate entry when Blender is built as a Python module](#23-alternate-entry-when-blender-is-built-as-a-python-module)
 - [3) High-level startup flow](#3-high-level-startup-flow)
 - [4) Detailed bootstrap path inside `creator.cc::main()`](#4-detailed-bootstrap-path-inside-creatorccmain)
@@ -51,17 +52,17 @@
 
 ## 1) Startup source-file map
 
-| File | Important symbols | Bootstrapping role |
-| --- | --- | --- |
-| `source/creator/creator.cc` | `main()`, `main_python_enter()`, `callback_main_atexit()` | Top-level application bootstrap and main control flow |
-| `source/creator/blender_launcher_win32.c` | `wWinMain()` | Windows launcher that forwards to `blender.exe` |
-| `source/creator/creator_args.cc` | `main_args_setup()`, `arg_handle_*()` | Command-line registration and processing |
-| `source/creator/creator_intern.h` | `ARG_PASS_*` enum, `ApplicationState` | Shared startup declarations and pass ordering |
-| `source/creator/creator_signals.cc` | `main_signal_setup()`, `main_signal_setup_background()` | Crash/abort/Ctrl-C startup handlers |
-| `source/blender/blenkernel/intern/blender.cc` | `Global G`, `UserDef U`, `BKE_blender_globals_init()` | Runtime-global initialization |
-| `source/blender/blenkernel/BKE_global.hh` | `struct Global` | Definition of startup/global runtime state |
-| `source/blender/windowmanager/intern/wm_init_exit.cc` | `WM_init()` | Window-manager / UI / home-file startup |
-| `source/blender/windowmanager/intern/wm.cc` | `WM_main()` | Main GUI event loop |
+| File                                                  | Important symbols                                         | Bootstrapping role                                    |
+| ----------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------- |
+| `source/creator/creator.cc`                           | `main()`, `main_python_enter()`, `callback_main_atexit()` | Top-level application bootstrap and main control flow |
+| `source/creator/blender_launcher_win32.c`             | `wWinMain()`                                              | Windows launcher that forwards to `blender.exe`       |
+| `source/creator/creator_args.cc`                      | `main_args_setup()`, `arg_handle_*()`                     | Command-line registration and processing              |
+| `source/creator/creator_intern.h`                     | `ARG_PASS_*` enum, `ApplicationState`                     | Shared startup declarations and pass ordering         |
+| `source/creator/creator_signals.cc`                   | `main_signal_setup()`, `main_signal_setup_background()`   | Crash/abort/Ctrl-C startup handlers                   |
+| `source/blender/blenkernel/intern/blender.cc`         | `Global G`, `UserDef U`, `BKE_blender_globals_init()`     | Runtime-global initialization                         |
+| `source/blender/blenkernel/BKE_global.hh`             | `struct Global`                                           | Definition of startup/global runtime state            |
+| `source/blender/windowmanager/intern/wm_init_exit.cc` | `WM_init()`                                               | Window-manager / UI / home-file startup               |
+| `source/blender/windowmanager/intern/wm.cc`           | `WM_main()`                                               | Main GUI event loop                                   |
 
 ---
 
@@ -95,7 +96,72 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 On Windows, `blender-launcher.exe` is a small wrapper that resolves and starts `blender.exe`.
 
+#### Relation between `wWinMain()` and `creator.cc::main()` on Windows
+
+The important point is that these are **not two functions inside one executable calling each other directly**. Instead, the Windows build creates **two separate executable targets**.
+
+**File:** `source/creator/CMakeLists.txt`
+
+```cmake
+add_executable(blender ${EXETYPE} ${SRC})
+
+if(WIN32)
+  add_executable(blender-launcher WIN32
+    blender_launcher_win32.c
+    ${CMAKE_SOURCE_DIR}/release/windows/icons/winblender.rc
+  )
+endif()
+```
+
+This means:
+
+- `blender.exe` uses `creator.cc::main()` as the real Blender startup entry point,
+- `blender-launcher.exe` uses `blender_launcher_win32.c::wWinMain()` as a Windows wrapper entry point.
+
+The launcher does **not** call `main()` as a normal C/C++ function. Instead, it builds the full path to `blender.exe` and starts it as a **new process** using `CreateProcess(...)`.
+
+**File:** `source/creator/blender_launcher_win32.c`
+
+```c
+/* Add blender.exe to path, resulting in the full path to the blender executable. */
+if (PathCchCombine(path, MAX_PATH, path, L"blender.exe") != S_OK) {
+  return -1;
+}
+
+BOOL success = CreateProcess(
+    path, buffer, NULL, NULL, TRUE, CREATE_NEW_CONSOLE, NULL, NULL, &siStartInfo, &procInfo);
+```
+
+So on Windows the control flow is conceptually:
+
+1. Windows may launch `blender-launcher.exe`,
+2. that enters `wWinMain()`,
+3. `wWinMain()` locates `blender.exe` and forwards the command line,
+4. Windows then starts a **new `blender.exe` process**,
+5. that new process enters `creator.cc::main()`.
+
+In other words, this is **process forwarding**, not **direct function forwarding**.
+
+A simplified view is:
+
+```mermaid
+flowchart TD
+    A[Windows starts blender-launcher.exe] --> B[wWinMain in blender_launcher_win32.c]
+    B --> C[Resolve path to blender.exe]
+    C --> D[CreateProcess for blender.exe]
+    D --> E[New process starts]
+    E --> F[creator.cc main]
+```
+
+If Windows launches `blender.exe` directly, then `creator.cc::main()` runs immediately and `wWinMain()` is not involved.
+
+The launcher also has one extra responsibility: in background mode or when launched from Steam, it can wait for the child process and return Blender's exit code.
+
 ### 2.3 Alternate entry when Blender is built as a Python module
+
+When WITH_PYTHON_MODULE is enabled, main_python_enter() is effectively the same startup body as creator.cc::main(), just renamed by the preprocessor.
+
+In creator.cc
 
 ```cpp
 #ifdef WITH_PYTHON_MODULE
@@ -106,7 +172,140 @@ int main_python_enter(int argc, const char **argv);
 #endif
 ```
 
+Then later the file defines:
+
+```cpp
+int main(int argc, ...)
+```
+
+Because of the macro, that function is compiled as blender::main_python_enter(int argc, ...)
+
 So Blender can also be entered through the `bpy` / Python-module path, not only as a standalone GUI executable.
+
+**Where is it actually called?**
+
+The call site is in:
+
+/source/blender/python/intern/bpy_interface.cc
+
+Inside bpy_module_delay_init():
+
+```cpp
+/* Defined in 'creator.c' when building as a Python module. */extern int main_python_enter(int argc, const char **argv);...main_python_enter(argc, argv);
+```
+
+So the runtime path is:
+
+```text
+import bpy  
+  -> bpy_interfacecc  
+  -> bpy_module_delay_init()
+  -> main_python_enter(argc, argv)
+  -> executes the renamed startup code from creator.cc
+```
+
+**What this alternative entry is for**
+
+This mode exists so Blender can be built as an **importable Python module** instead of a normal desktop application. In practice, this is used when developers want to:
+
+- `import bpy` from Python,
+- run Blender functionality inside studio pipelines or automation scripts,
+- use Blender in web services, data processing, or scientific workflows,
+- access the Blender API without launching the normal interactive UI.
+
+The source tree describes that intent directly.
+
+**File:** `source/creator/creator.cc`
+
+```cpp
+/* Called in `bpy_interface.cc` when building as a Python module. */
+int main_python_enter(int argc, const char **argv);
+```
+
+And Blender's wheel-packaging helper states the broader use case:
+
+**File:** `build_files/utils/make_bpy_wheel.py`
+
+```python
+This package provides Blender as a Python module for use in studio pipelines, web services,
+scientific research, and more.
+```
+
+The runtime behavior is also intentionally different from the normal GUI executable. In `creator.cc`:
+
+```cpp
+/* Using preferences or user startup makes no sense for #WITH_PYTHON_MODULE. */
+G.factory_startup = true;
+...
+/* Python module mode ALWAYS runs in background-mode (for now). */
+G.background = true;
+```
+
+So this path is mainly for **headless / scripted / embedded use**, not for the usual windowed Blender session.
+
+**How it is compiled**
+
+The CMake build switches from creating the normal executable to creating a Python-loadable module.
+
+**File:** `source/creator/CMakeLists.txt`
+
+```cmake
+if(WITH_PYTHON_MODULE)
+  add_definitions(-DWITH_PYTHON_MODULE)
+
+  # Creates `./bpy/__init__.so` which can be imported as a Python module.
+  add_library(blender MODULE ${SRC})
+
+  set_target_properties(
+    blender
+    PROPERTIES
+      PREFIX ""
+      OUTPUT_NAME __init__
+      LIBRARY_OUTPUT_DIRECTORY ${BPY_OUTPUT_DIRECTORY}
+      RUNTIME_OUTPUT_DIRECTORY ${BPY_OUTPUT_DIRECTORY}
+  )
+endif()
+```
+
+This means:
+
+- the target is no longer a normal `blender` executable,
+- it is built as a **module library**,
+- the output is renamed to `__init__`, so it becomes importable as the `bpy` package,
+- on Windows the suffix becomes `.pyd`, while on Unix-like systems it is a shared-object module such as `.so`.
+
+A source-backed configuration shortcut already exists for this build mode.
+
+**File:** `build_files/cmake/config/bpy_module.cmake`
+
+```cmake
+# Example usage:
+#   cmake -C../blender/build_files/cmake/config/bpy_module.cmake  ../blender
+
+set(WITH_PYTHON_MODULE ON CACHE BOOL "" FORCE)
+```
+
+So a typical out-of-source build flow is:
+
+```bash
+mkdir build-bpy
+cd build-bpy
+cmake -C ../blender_fork/build_files/cmake/config/bpy_module.cmake ../blender_fork
+cmake --build . --config Release --target blender
+```
+
+After building, the resulting module is placed under a `bpy` output directory, for example:
+
+- `bin/bpy/__init__.so` on Linux,
+- `bin/Release/bpy/__init__.pyd` on Windows multi-config generators.
+
+Then the intended usage is from Python itself:
+
+```python
+import bpy
+```
+
+So, conceptually, section `2.3` is the **embedded-Python / importable-Blender entry path**, whereas section `2.1` is the normal application startup path for the standalone executable.
 
 ---
 
@@ -580,24 +779,24 @@ So some arguments **do work immediately** and can be overwritten by later file l
 
 ## 8) Important command-line switches, handlers, and effects
 
-| Switch | Handler / Source | Pass | Verified effect in code |
-| --- | --- | --- | --- |
-| `-b`, `--background` | `arg_handle_background_mode_set()` in `creator_args.cc` | `ARG_PASS_SETTINGS` | Calls `background_mode_set();`, sets `G.background = true;`, and forces `BKE_sound_force_device("None");` |
-| `-c`, `--command` | `arg_handle_command_set()` | `ARG_PASS_SETTINGS` | Implies background mode, suppresses info output, and uses `main_arg_deferred_setup(...)` for deferred execution |
-| `--factory-startup` | `arg_handle_factory_startup_set()` | `ARG_PASS_SETTINGS` | `G.factory_startup = true;` and `G.f \|= G_FLAG_USERPREF_NO_SAVE_ON_EXIT;` |
-| `-d`, `--debug` | `arg_handle_debug_mode_set()` | `ARG_PASS_SETTINGS` | Sets `G.debug \|= G_DEBUG;`, enables memory debug, prints build info and argument state |
-| `--debug-*` | `arg_handle_debug_mode_generic_set()` and related handlers | `ARG_PASS_SETTINGS` | ORs specific debug bit flags into `G.debug` |
-| `--offline-mode` / `--online-mode` | `arg_handle_internet_allow_set()` | `ARG_PASS_SETTINGS` | Sets/clears `G_FLAG_INTERNET_ALLOW` and override flags in `G.f` |
-| `-t`, `--threads` | `arg_handle_threads_set()` | `ARG_PASS_ENVIRONMENT` | Calls `BLI_system_num_threads_override_set(threads);` |
-| `--env-system-datafiles`, `--env-system-scripts`, `--env-system-python`, `--env-system-extensions` | `arg_handle_env_system_set()` | `ARG_PASS_ENVIRONMENT` | Sets Blender path-related environment variables before appdir initialization |
-| `-f`, `--render-frame` | `arg_handle_render_frame()` | `ARG_PASS_FINAL` | Parses frame/range arguments and calls `RE_RenderAnim(...)` |
-| `-a`, `--render-anim` | `arg_handle_render_animation()` | `ARG_PASS_FINAL` | Renders from `scene->r.sfra` to `scene->r.efra` |
-| `-P`, `--python` | `arg_handle_python_file_run()` | `ARG_PASS_FINAL` | Canonicalizes the path and runs `BPY_run_filepath(C, filepath, nullptr)` |
-| `--python-expr` | `arg_handle_python_expr_run()` | `ARG_PASS_FINAL` | Executes `BPY_run_string_exec(C, nullptr, argv[1])` |
-| `--python-exit-code` | `arg_handle_python_exit_code_set()` | `ARG_PASS_FINAL` | Sets `app_state.exit_code_on_error.python` for CLI Python failures |
-| `-o`, `--render-output` | `arg_handle_output_set()` | `ARG_PASS_FINAL` | Writes into `scene->r.pic` |
-| `-E`, `--engine` | `arg_handle_engine_set()` | `ARG_PASS_FINAL` | Updates `scene->r.engine` if the engine exists |
-| `-F`, `--render-format` | `arg_handle_image_type_set()` | `ARG_PASS_FINAL` | Converts the requested output format and updates `scene->r.im_format` |
+| Switch                                                                                             | Handler / Source                                           | Pass                   | Verified effect in code                                                                                         |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `-b`, `--background`                                                                               | `arg_handle_background_mode_set()` in `creator_args.cc`    | `ARG_PASS_SETTINGS`    | Calls `background_mode_set();`, sets `G.background = true;`, and forces `BKE_sound_force_device("None");`       |
+| `-c`, `--command`                                                                                  | `arg_handle_command_set()`                                 | `ARG_PASS_SETTINGS`    | Implies background mode, suppresses info output, and uses `main_arg_deferred_setup(...)` for deferred execution |
+| `--factory-startup`                                                                                | `arg_handle_factory_startup_set()`                         | `ARG_PASS_SETTINGS`    | `G.factory_startup = true;` and `G.f \|= G_FLAG_USERPREF_NO_SAVE_ON_EXIT;`                                      |
+| `-d`, `--debug`                                                                                    | `arg_handle_debug_mode_set()`                              | `ARG_PASS_SETTINGS`    | Sets `G.debug \|= G_DEBUG;`, enables memory debug, prints build info and argument state                         |
+| `--debug-*`                                                                                        | `arg_handle_debug_mode_generic_set()` and related handlers | `ARG_PASS_SETTINGS`    | ORs specific debug bit flags into `G.debug`                                                                     |
+| `--offline-mode` / `--online-mode`                                                                 | `arg_handle_internet_allow_set()`                          | `ARG_PASS_SETTINGS`    | Sets/clears `G_FLAG_INTERNET_ALLOW` and override flags in `G.f`                                                 |
+| `-t`, `--threads`                                                                                  | `arg_handle_threads_set()`                                 | `ARG_PASS_ENVIRONMENT` | Calls `BLI_system_num_threads_override_set(threads);`                                                           |
+| `--env-system-datafiles`, `--env-system-scripts`, `--env-system-python`, `--env-system-extensions` | `arg_handle_env_system_set()`                              | `ARG_PASS_ENVIRONMENT` | Sets Blender path-related environment variables before appdir initialization                                    |
+| `-f`, `--render-frame`                                                                             | `arg_handle_render_frame()`                                | `ARG_PASS_FINAL`       | Parses frame/range arguments and calls `RE_RenderAnim(...)`                                                     |
+| `-a`, `--render-anim`                                                                              | `arg_handle_render_animation()`                            | `ARG_PASS_FINAL`       | Renders from `scene->r.sfra` to `scene->r.efra`                                                                 |
+| `-P`, `--python`                                                                                   | `arg_handle_python_file_run()`                             | `ARG_PASS_FINAL`       | Canonicalizes the path and runs `BPY_run_filepath(C, filepath, nullptr)`                                        |
+| `--python-expr`                                                                                    | `arg_handle_python_expr_run()`                             | `ARG_PASS_FINAL`       | Executes `BPY_run_string_exec(C, nullptr, argv[1])`                                                             |
+| `--python-exit-code`                                                                               | `arg_handle_python_exit_code_set()`                        | `ARG_PASS_FINAL`       | Sets `app_state.exit_code_on_error.python` for CLI Python failures                                              |
+| `-o`, `--render-output`                                                                            | `arg_handle_output_set()`                                  | `ARG_PASS_FINAL`       | Writes into `scene->r.pic`                                                                                      |
+| `-E`, `--engine`                                                                                   | `arg_handle_engine_set()`                                  | `ARG_PASS_FINAL`       | Updates `scene->r.engine` if the engine exists                                                                  |
+| `-F`, `--render-format`                                                                            | `arg_handle_image_type_set()`                              | `ARG_PASS_FINAL`       | Converts the requested output format and updates `scene->r.im_format`                                           |
 
 ### Example supporting excerpts
 

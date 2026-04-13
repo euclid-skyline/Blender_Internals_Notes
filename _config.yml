@@ -1,0 +1,9 @@
+title: Blender Internals Notes
+description: A collection of source-backed notes for understanding how Blender works internally.
+theme: jekyll-theme-cayman
+
+# Additional configuration
+markdown: kramdown
+plugins:
+  - jekyll-seo-tag
+  - jekyll-relative-links

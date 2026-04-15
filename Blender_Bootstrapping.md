@@ -684,6 +684,22 @@ blender --background --factory-startup file.blend --python my_script.py
 
 The following is the verified sequence of operations inside `WM_init()`, derived directly from the source:
 
+```mermaid
+flowchart TD
+    A["Phase A – Windowing & input (GUI only)\nwm_ghost_init · wm_init_cursor_data\nBKE_sound_jack_sync_callback_set"]
+    B["Phase B – Operator / panel / menu / gizmo / undo types\nwm_operatortypes_register · WM_paneltype_init\nWM_menutype_init · wm_gizmotype_init · ED_undosys_type_init"]
+    C["Phase C – Editor callback wiring\nBKE_library_callback_* · DEG_editors_set_update_cb\nBKE_region_callback_*"]
+    D["Phase D – Editor space types & font/language\nED_spacetypes_init · ED_node_init_butfuncs\nBLF_init · BLT_lang_init · BLT_lang_set"]
+    E["Phase E – Icons / previews / message bus / studio lights\nBKE_icons_init · BKE_preview_images_init\nWM_msgbus_types_init · BKE_studiolight_init"]
+    F["Phase F – Home file / startup file read\nwm_homefile_read_ex\n(uses G.factory_startup · app_template)"]
+    G2["Phase G – File system & GPU init (GUI only)\nED_file_init · WM_init_gpu · ui::init\nbke::subdiv::init · ED_spacemacros_init"]
+    H["Phase H – Python runtime\nBPY_python_start · BPY_python_reset"]
+    I["Phase I – History / recent searches / key config\nwm_history_file_read · WM_keyconfig_init\nCTX_py_init_set"]
+    J["Phase J – Add-ons & extensions / final key-map\nwm_init_scripts_extensions_once\nbpy.utils.load_scripts_extensions\nWM_keyconfig_update_on_startup · wm_homefile_read_post"]
+
+    A --> B --> C --> D --> E --> F --> G2 --> H --> I --> J
+```
+
 **Phase A – Windowing and input (GUI only)**
 
 ```cpp

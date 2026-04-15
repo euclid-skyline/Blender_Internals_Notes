@@ -191,17 +191,20 @@ The call site is in:
 Inside bpy_module_delay_init():
 
 ```cpp
-/* Defined in 'creator.c' when building as a Python module. */extern int main_python_enter(int argc, const char **argv);...main_python_enter(argc, argv);
+/* Defined in 'creator.c' when building as a Python module. */
+extern int main_python_enter(int argc, const char **argv);
+...
+main_python_enter(argc, argv);
 ```
 
 So the runtime path is:
 
 ```text
-import bpy  
-  -> bpy_interfacecc  
-  -> bpy_module_delay_init()
-  -> main_python_enter(argc, argv)
-  -> executes the renamed startup code from creator.cc
+import bpy
+  -> bpy_interface.cc
+  -> bpy_module_delay_init()
+  -> main_python_enter(argc, argv)
+  -> executes the renamed startup code from creator.cc
 ```
 
 **What this alternative entry is for**
@@ -345,7 +348,7 @@ BKE_blender_atexit_register(callback_main_atexit, &app_init_data);
 C = CTX_create();
 ```
 
-On Windows, it also converts UTF-16 command-line arguments to UTF-8 before normal processing:
+On Windows, it also handles Windows-specific command-line fetching by converting the native UTF-16 command-line arguments (`GetCommandLineW()`) to standard UTF-8 before normal cross-platform processing begins:
 
 ```cpp
 wchar_t **argv_16 = CommandLineToArgvW(GetCommandLineW(), &argc);
@@ -788,6 +791,7 @@ So some arguments **do work immediately** and can be overwritten by later file l
 | `--debug-*`                                                                                        | `arg_handle_debug_mode_generic_set()` and related handlers | `ARG_PASS_SETTINGS`    | ORs specific debug bit flags into `G.debug`                                                                     |
 | `--offline-mode` / `--online-mode`                                                                 | `arg_handle_internet_allow_set()`                          | `ARG_PASS_SETTINGS`    | Sets/clears `G_FLAG_INTERNET_ALLOW` and override flags in `G.f`                                                 |
 | `-t`, `--threads`                                                                                  | `arg_handle_threads_set()`                                 | `ARG_PASS_ENVIRONMENT` | Calls `BLI_system_num_threads_override_set(threads);`                                                           |
+| `--python-use-system-env`                                                                          | `arg_handle_env_system_set()`                              | `ARG_PASS_ENVIRONMENT` | Forces Blender to respect standard OS environment variables like `PYTHONPATH` rather than its bundled Python path |
 | `--env-system-datafiles`, `--env-system-scripts`, `--env-system-python`, `--env-system-extensions` | `arg_handle_env_system_set()`                              | `ARG_PASS_ENVIRONMENT` | Sets Blender path-related environment variables before appdir initialization                                    |
 | `-f`, `--render-frame`                                                                             | `arg_handle_render_frame()`                                | `ARG_PASS_FINAL`       | Parses frame/range arguments and calls `RE_RenderAnim(...)`                                                     |
 | `-a`, `--render-anim`                                                                              | `arg_handle_render_animation()`                            | `ARG_PASS_FINAL`       | Renders from `scene->r.sfra` to `scene->r.efra`                                                                 |

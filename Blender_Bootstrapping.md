@@ -16,53 +16,59 @@
 - [3) High-level startup flow](#3-high-level-startup-flow)
 - [4) Detailed bootstrap path inside `creator.cc::main()`](#4-detailed-bootstrap-path-inside-creatorccmain)
   - [4.1 Early exit safety and platform argument handling](#41-early-exit-safety-and-platform-argument-handling)
-  - [4.2 Very early debug-memory switch](#42-very-early-debug-memory-switch)
-  - [4.3 Logging, context, executable path, and runtime-global setup](#43-logging-context-executable-path-and-runtime-global-setup)
-  - [4.4 Core type and subsystem registration](#44-core-type-and-subsystem-registration)
-  - [4.5 Argument system setup and multi-pass parsing](#45-argument-system-setup-and-multi-pass-parsing)
-  - [4.6 Core runtime libraries and the hand-off to the window manager](#46-core-runtime-libraries-and-the-hand-off-to-the-window-manager)
-  - [4.7 Final parse and execution branch](#47-final-parse-and-execution-branch)
-  - [4.8 Background mode overview](#48-background-mode-overview)
+  - [4.2 Platform-specific and compiler-specific early setup](#42-platform-specific-and-compiler-specific-early-setup)
+  - [4.3 Very early debug-memory switch](#43-very-early-debug-memory-switch)
+  - [4.4 Logging, context, executable path, and runtime-global setup](#44-logging-context-executable-path-and-runtime-global-setup)
+  - [4.5 Core type and subsystem registration](#45-core-type-and-subsystem-registration)
+  - [4.6 Argument system setup and multi-pass parsing](#46-argument-system-setup-and-multi-pass-parsing)
+  - [4.7 Core runtime libraries and the hand-off to the window manager](#47-core-runtime-libraries-and-the-hand-off-to-the-window-manager)
+  - [4.8 Final parse and execution branch](#48-final-parse-and-execution-branch)
+  - [4.9 Background mode overview](#49-background-mode-overview)
   - [What it is used for](#what-it-is-used-for)
   - [How to run it from the CLI](#how-to-run-it-from-the-cli)
   - [Source files to deep dive further](#source-files-to-deep-dive-further)
 - [5) What `WM_init()` actually initializes](#5-what-wm_init-actually-initializes)
-  - [Verified startup excerpt](#verified-startup-excerpt)
-  - [What happens here](#what-happens-here)
+  - [Complete ordered initialization sequence](#complete-ordered-initialization-sequence)
+  - [Key design note on startup inter-dependencies](#key-design-note-on-startup-inter-dependencies)
   - [Factory-startup link](#factory-startup-link)
-- [6) Runtime-global state used during bootstrapping](#6-runtime-global-state-used-during-bootstrapping)
-  - [6.1 `Global G` and `UserDef U`](#61-global-g-and-userdef-u)
-  - [6.2 Important fields in `struct Global`](#62-important-fields-in-struct-global)
-  - [6.3 `ApplicationState app_state`](#63-applicationstate-app_state)
-- [7) Command-line option architecture and processing](#7-command-line-option-architecture-and-processing)
-  - [7.1 Generic CLI parser used by Blender](#71-generic-cli-parser-used-by-blender)
-  - [7.2 Pass order is explicitly defined](#72-pass-order-is-explicitly-defined)
-  - [7.3 `main_args_setup()` registers the options](#73-main_args_setup-registers-the-options)
-  - [7.4 Order of arguments is semantically important](#74-order-of-arguments-is-semantically-important)
-- [8) Important command-line switches, handlers, and effects](#8-important-command-line-switches-handlers-and-effects)
+- [6) `WM_main()` – the GUI event loop](#6-wm_main--the-gui-event-loop)
+- [7) `WM_exit()` – the shutdown sequence](#7-wm_exit--the-shutdown-sequence)
+- [8) Runtime-global state used during bootstrapping](#8-runtime-global-state-used-during-bootstrapping)
+  - [8.1 `Global G` and `UserDef U`](#81-global-g-and-userdef-u)
+  - [8.2 Important fields in `struct Global`](#82-important-fields-in-struct-global)
+  - [8.3 `ApplicationState app_state`](#83-applicationstate-app_state)
+- [9) Command-line option architecture and processing](#9-command-line-option-architecture-and-processing)
+  - [9.1 Generic CLI parser used by Blender](#91-generic-cli-parser-used-by-blender)
+  - [9.2 Pass order is explicitly defined](#92-pass-order-is-explicitly-defined)
+  - [9.3 `main_args_setup()` registers the options](#93-main_args_setup-registers-the-options)
+  - [9.4 Order of arguments is semantically important](#94-order-of-arguments-is-semantically-important)
+- [10) Important command-line switches, handlers, and effects](#10-important-command-line-switches-handlers-and-effects)
   - [Example supporting excerpts](#example-supporting-excerpts)
-- [9) How file loading and deferred background work are handled](#9-how-file-loading-and-deferred-background-work-are-handled)
-  - [9.1 Unknown / trailing non-option arguments become blend files](#91-unknown--trailing-non-option-arguments-become-blend-files)
-  - [9.2 Some CLI actions are explicitly deferred until the runtime is fully initialized](#92-some-cli-actions-are-explicitly-deferred-until-the-runtime-is-fully-initialized)
-- [10) Signal and crash handler bootstrapping](#10-signal-and-crash-handler-bootstrapping)
-- [11) Short Answers](#11-short-answers)
-- [12) Source-level conclusion](#12-source-level-conclusion)
+- [11) How file loading and deferred background work are handled](#11-how-file-loading-and-deferred-background-work-are-handled)
+  - [11.1 Unknown / trailing non-option arguments become blend files](#111-unknown--trailing-non-option-arguments-become-blend-files)
+  - [11.2 Some CLI actions are explicitly deferred until the runtime is fully initialized](#112-some-cli-actions-are-explicitly-deferred-until-the-runtime-is-fully-initialized)
+- [12) Signal and crash handler bootstrapping](#12-signal-and-crash-handler-bootstrapping)
+- [13) Short Answers](#13-short-answers)
+- [14) Source-level conclusion](#14-source-level-conclusion)
 
 ---
 
 ## 1) Startup source-file map
 
-| File                                                  | Important symbols                                         | Bootstrapping role                                    |
-| ----------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------- |
-| `source/creator/creator.cc`                           | `main()`, `main_python_enter()`, `callback_main_atexit()` | Top-level application bootstrap and main control flow |
-| `source/creator/blender_launcher_win32.c`             | `wWinMain()`                                              | Windows launcher that forwards to `blender.exe`       |
-| `source/creator/creator_args.cc`                      | `main_args_setup()`, `arg_handle_*()`                     | Command-line registration and processing              |
-| `source/creator/creator_intern.h`                     | `ARG_PASS_*` enum, `ApplicationState`                     | Shared startup declarations and pass ordering         |
-| `source/creator/creator_signals.cc`                   | `main_signal_setup()`, `main_signal_setup_background()`   | Crash/abort/Ctrl-C startup handlers                   |
-| `source/blender/blenkernel/intern/blender.cc`         | `Global G`, `UserDef U`, `BKE_blender_globals_init()`     | Runtime-global initialization                         |
-| `source/blender/blenkernel/BKE_global.hh`             | `struct Global`                                           | Definition of startup/global runtime state            |
-| `source/blender/windowmanager/intern/wm_init_exit.cc` | `WM_init()`                                               | Window-manager / UI / home-file startup               |
-| `source/blender/windowmanager/intern/wm.cc`           | `WM_main()`                                               | Main GUI event loop                                   |
+| File                                                     | Important symbols                                                   | Bootstrapping role                                    |
+| -------------------------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------- |
+| `source/creator/creator.cc`                              | `main()`, `main_python_enter()`, `callback_main_atexit()`           | Top-level application bootstrap and main control flow |
+| `source/creator/blender_launcher_win32.c`                | `wWinMain()`                                                        | Windows launcher that forwards to `blender.exe`       |
+| `source/creator/creator_args.cc`                         | `main_args_setup()`, `arg_handle_*()`, `main_args_handle_load_file` | Command-line registration and processing              |
+| `source/creator/creator_intern.h`                        | `ARG_PASS_*` enum, `ApplicationState`                               | Shared startup declarations and pass ordering         |
+| `source/creator/creator_signals.cc`                      | `main_signal_setup()`, `main_signal_setup_background()`             | Crash/abort/Ctrl-C startup handlers                   |
+| `source/blender/blenkernel/intern/blender.cc`            | `Global G`, `UserDef U`, `BKE_blender_globals_init()`               | Runtime-global initialization                         |
+| `source/blender/blenkernel/BKE_global.hh`                | `struct Global`                                                     | Definition of startup/global runtime state            |
+| `source/blender/windowmanager/intern/wm_init_exit.cc`    | `WM_init()`, `WM_init_gpu()`, `WM_exit_ex()`                        | Window-manager / UI / home-file startup and shutdown  |
+| `source/blender/windowmanager/intern/wm.cc`              | `WM_main()`                                                         | Main GUI event loop                                   |
+| `source/blender/windowmanager/intern/wm_event_system.cc` | `wm_event_do_handlers()`, `wm_event_do_notifiers()`                 | Event dispatch and notifier processing                |
+| `source/blender/windowmanager/intern/wm_draw.cc`         | `wm_draw_update()`                                                  | Per-frame draw update from event loop                 |
+| `source/blender/python/intern/bpy_interface.cc`          | `bpy_module_delay_init()`, `main_python_enter()`                    | Python module entry path                              |
 
 ---
 
@@ -316,21 +322,24 @@ So, conceptually, section `2.3` is the **embedded-Python / importable-Blender en
 
 ```mermaid
 flowchart TD
-    A[OS entry point<br/>wWinMain / main / main_python_enter] --> B[creator.cc::main]
-    B --> C[Early process setup<br/>allocator, logging, CTX_create]
-    C --> D[BKE_blender_globals_init]
-    D --> E[BLI_args_create + main_args_setup]
-    E --> F[ARG_PASS_ENVIRONMENT]
-    F --> G[BKE_appdir_init + task scheduler]
-    G --> H[ARG_PASS_SETTINGS]
-    H --> I[Core subsystems<br/>IMB/RNA/RE/node init]
-    I --> J[WM_init]
-    J --> K[BLI_args_parse ARG_PASS_FINAL]
-    K --> L{G.background?}
-    L -- No --> M[WM_init_splash_on_startup]
-    M --> N[WM_main event loop]
-    L -- Yes --> O[Deferred CLI work / render / python]
-    O --> P[WM_exit]
+    A["OS entry point<br/>wWinMain / main / main_python_enter"] --> B["creator.cc::main"
+]
+    B --> B0["Platform setup<br/>stdout unbuffering, LD_PRELOAD restore,<br/>Win32 UTF-16 args, TBB huge pages"]
+    B0 --> C["Early process setup<br/>MEM allocator, build date, CLG_init,<br/>CTX_create, BKE_appdir_program_path_init"]
+    C --> D["BKE_blender_globals_init<br/>BKE_cpp_types_init / BKE_idtype_init<br/>BKE_modifier_init / DEG_register_node_types<br/>BKE_callback_global_init"]
+    D --> E["BLI_args_create + main_args_setup"]
+    E --> F["ARG_PASS_ENVIRONMENT<br/>(threads, env paths)"]
+    F --> G["BKE_appdir_init<br/>BLI_task_scheduler_init<br/>fftw::initialize_float"]
+    G --> H["ARG_PASS_SETTINGS<br/>(background, factory-startup, debug)<br/>main_signal_setup"]
+    H --> I["Core subsystems<br/>IMB_init / MOV_init / RNA_init<br/>RE_engines_init / node_system_init<br/>BKE_sound_init_once / BKE_materials_init"]
+    I --> I2["ARG_PASS_SETTINGS_GUI (GUI only)<br/>ARG_PASS_SETTINGS_FORCE"]
+    I2 --> J["WM_init<br/>(GHOST / operators / home-file /<br/>GPU / Python / add-ons / keymaps)"]
+    J --> K["BLI_args_parse ARG_PASS_FINAL<br/>(default_cb = main_args_handle_load_file)"]
+    K --> L{"G.background?"}
+    L -- No --> M["WM_init_splash_on_startup"]
+    M --> N["WM_main event loop<br/>(infinite: events → handlers →<br/>notifiers → draw)"]
+    L -- Yes --> O["main_arg_deferred_handle<br/>(render / python / command)"]
+    O --> P["WM_exit → WM_exit_ex<br/>(Python / GPU / RNA / GHOST /<br/>threads / sound / CLG shutdown)"]
 ```
 
 ---
@@ -339,25 +348,92 @@ flowchart TD
 
 ### 4.1 Early exit safety and platform argument handling
 
-At the beginning of `main()`, Blender registers cleanup logic before heavy initialization:
+At the very beginning of `main()`, Blender registers a cleanup callback so that resources are freed correctly even on early exits (e.g., when Python calls `sys.exit()` during argument parsing):
 
 ```cpp
 CreatorAtExitData app_init_data = {nullptr};
 BKE_blender_atexit_register(callback_main_atexit, &app_init_data);
-...
-C = CTX_create();
+
+CreatorAtExitData_EarlyExit app_init_data_early_exit = {nullptr};
+app_init_data.early_exit = &app_init_data_early_exit;
 ```
 
-On Windows, it also handles Windows-specific command-line fetching by converting the native UTF-16 command-line arguments (`GetCommandLineW()`) to standard UTF-8 before normal cross-platform processing begins:
+The `early_exit` pointer is cleared later once initialization is past the fragile early phase (`app_init_data.early_exit = nullptr;`). Until then, `callback_main_atexit` will also run `CTX_free()`, `DEG_free_node_types()`, `BKE_blender_globals_clear()`, `BKE_appdir_exit()`, `DNA_sdna_current_free()`, and `CLG_exit()` — enough to release the essential early-allocated resources.
+
+On Windows, the native UTF-16 command-line arguments (`GetCommandLineW()`) are converted to standard UTF-8 before normal cross-platform processing begins:
 
 ```cpp
 wchar_t **argv_16 = CommandLineToArgvW(GetCommandLineW(), &argc);
 app_init_data.argv = static_cast<char **>(malloc(argc * sizeof(char *)));
-...
+for (int i = 0; i < argc; i++) {
+  app_init_data.argv[i] = alloc_utf_8_from_16(argv_16[i], 0);
+}
+LocalFree(argv_16);
 const char **argv = const_cast<const char **>(app_init_data.argv);
 ```
 
-### 4.2 Very early debug-memory switch
+### 4.2 Platform-specific and compiler-specific early setup
+
+Before the argument parser is active, several compile-time and platform-specific configurations are applied:
+
+**Unbuffered stdout (debug builds only)**
+
+```cpp
+#ifndef NDEBUG
+  setvbuf(stdout, nullptr, _IONBF, 0);
+#endif
+```
+
+This ensures that debug `printf` output is immediately visible when stepping through a debugger. It is disabled in release builds to avoid lock contention on Windows (see [#76767](https://projects.blender.org/blender/blender/issues/76767)).
+
+**Linux `LD_PRELOAD` restoration**
+
+```cpp
+restore_ld_preload();
+```
+
+Blender may have patched `LD_PRELOAD` at launch to inject a custom allocator. `restore_ld_preload()` resets `LD_PRELOAD` back to the value stored in `BLENDER_RESTORE_LD_PRELOAD`, so that child processes spawned later (e.g., render farms, subprocesses) do not inherit Blender's special allocation hooks.
+
+**OpenGL shader compilation subprocess early exit (optional)**
+
+When the `WITH_OPENGL_BACKEND` is enabled and subprocess support is available, `main()` checks a special first argument before doing anything else:
+
+```cpp
+#if defined(WITH_OPENGL_BACKEND) && BLI_SUBPROCESS_SUPPORT
+if (STREQ(argv[0], "--compilation-subprocess")) {
+  BLI_assert(argc == 2);
+  GPU_compilation_subprocess_run(argv[1]);
+  return 0;
+}
+#endif
+```
+
+This is used internally when Blender spawns worker sub-processes to compile GPU shaders in parallel. These sub-processes exit immediately after completing their compilation task.
+
+**TBB huge pages (Linux)**
+
+```cpp
+#if defined(WITH_TBB_MALLOC) && defined(__linux__)
+  scalable_allocation_mode(TBBMALLOC_USE_HUGE_PAGES, 1);
+#endif
+```
+
+On Linux with the TBB memory allocator, Blender enables huge-page support for improved allocation performance.
+
+**Build date initialization**
+
+When built with `BUILD_DATE`, the commit timestamp is formatted into human-readable strings:
+
+```cpp
+#ifdef BUILD_DATE
+const time_t temp_time = build_commit_timestamp;
+const tm *tm = gmtime(&temp_time);
+strftime(build_commit_date, sizeof(build_commit_date), "%Y-%m-%d", tm);
+strftime(build_commit_time, sizeof(build_commit_time), "%H:%M", tm);
+#endif
+```
+
+### 4.3 Very early debug-memory switch
 
 Before most other initialization, Blender scans `argv` for debug flags:
 
@@ -377,33 +453,39 @@ MEM_init_memleak_detection();
 
 This is important: some CLI flags affect startup **before** the normal argument parser is fully active.
 
-### 4.3 Logging, context, executable path, and runtime-global setup
+### 4.4 Logging, context, executable path, and runtime-global setup
 
-The next major initialization block is:
+After the very early memory and platform setup, logging is fully started and the context is created:
 
 ```cpp
 CLG_init();
-...
+CLG_output_use_timestamp_set(true);
+CLG_output_use_memory_set(false);
+CLG_output_use_source_set(false);
+CLG_output_use_basename_set(false);
+CLG_fatal_fn_set(callback_clg_fatal); /* Prints a backtrace on fatal log events. */
+
 C = CTX_create();
-...
+
 BKE_appdir_program_path_init(argv[0]);
 
 BLI_threadapi_init();
 DNA_sdna_current_init();
 
-BKE_blender_globals_init(); /* `blender.cc` */
+BKE_blender_globals_init(); /* source/blender/blenkernel/intern/blender.cc */
 ```
 
 Key meaning:
 
-- `CLG_init()` starts the logging system.
-- `CTX_create()` allocates the central `bContext`.
-- `BKE_appdir_program_path_init(argv[0])` records the executable location.
-- `BKE_blender_globals_init()` creates/reset the global runtime state (`G`, `G_MAIN`, etc.).
+- `CLG_init()` starts the logging system; the following calls configure its output format.
+- `CLG_fatal_fn_set(callback_clg_fatal)` registers `BLI_system_backtrace()` to run on any fatal log message — an early crash-safety measure.
+- `CTX_create()` allocates the central `bContext` that flows through almost every subsequent call.
+- `BKE_appdir_program_path_init(argv[0])` records the executable location so asset and script paths can be resolved relative to it.
+- `BKE_blender_globals_init()` zeros `G`, sets default flags (script autoexec, log level), and allocates the initial `G_MAIN`.
 
-### 4.4 Core type and subsystem registration
+### 4.5 Core type and subsystem registration
 
-Still in `main()`:
+Still in `main()`, before any arguments are processed, core C++ and DNA type infrastructure is registered:
 
 ```cpp
 BKE_cpp_types_init();
@@ -413,11 +495,13 @@ seq::modifiers_init();
 BKE_shaderfx_init();
 BKE_volumes_init();
 DEG_register_node_types();
+
+BKE_callback_global_init(); /* Registers the global callback system. */
 ```
 
-At this stage Blender registers core C++/ID/modifier/depsgraph infrastructure before loading files or starting the UI.
+At this stage Blender registers core C++/ID/modifier/depsgraph infrastructure before loading files or starting the UI. `BKE_callback_global_init()` is important because later code (file loading, rendering) fires global callbacks that must be registered before they are called.
 
-### 4.5 Argument system setup and multi-pass parsing
+### 4.6 Argument system setup and multi-pass parsing
 
 The CLI system is created and connected here:
 
@@ -425,29 +509,38 @@ The CLI system is created and connected here:
 ba = BLI_args_create(argc, argv);
 main_args_setup(C, ba, false);
 
-/* Parse environment handling arguments. */
+/* Pass 1: environment-affecting options (thread count, env paths). */
 BLI_args_parse(ba, ARG_PASS_ENVIRONMENT, nullptr, nullptr);
 ```
 
 Then, after environment-affecting options are processed:
 
 ```cpp
-BKE_appdir_init();
-BLI_task_scheduler_init();
-fftw::initialize_float();
+BKE_appdir_init();           /* Resolves data/config/script directories. */
+BLI_task_scheduler_init();   /* Creates the thread pool. */
+fftw::initialize_float();    /* FFTW threading support. */
+
+/* Pass 2: background mode, factory-startup, debug flags, animation player. */
 BLI_args_parse(ba, ARG_PASS_SETTINGS, nullptr, nullptr);
+
+/* Signal handlers installed now, after background mode is known. */
+main_signal_setup();
 ```
 
-This order matters because some arguments change paths, threads, or global behavior before later subsystems start.
+This order matters because some arguments change paths, threads, or global behavior before later subsystems start. `main_signal_setup()` is called **after** `ARG_PASS_SETTINGS` so it knows whether `G.background` is true.
 
-### 4.6 Core runtime libraries and the hand-off to the window manager
+### 4.7 Core runtime libraries and the hand-off to the window manager
 
-After the settings pass:
+After the settings pass, the remaining media, rendering, and node subsystems are initialized:
 
 ```cpp
-IMB_init();
-MOV_init();
-RNA_init();
+#ifdef WITH_CYCLES
+  CCL_log_init(); /* Cycles log system. */
+#endif
+
+IMB_init();   /* Image buffer system (must be after color-management paths via appdir). */
+MOV_init();   /* Movie/video support (after debug flags). */
+RNA_init();   /* RNA type system (after ARG_PASS_SETTINGS so WM_main_playanim can skip it). */
 
 RE_texture_rng_init();
 RE_engines_init();
@@ -457,42 +550,79 @@ BKE_brush_system_init();
 BKE_particle_init_rng();
 ```
 
+Then a set of unconditionally-needed resources:
+
+```cpp
+/* Built-in fallback font, required even in background mode for text rendering. */
+BKE_vfont_builtin_register(datatoc_bfont_pfb, datatoc_bfont_pfb_size);
+
+/* Initializes FFMPEG and the audio device; also needed in background for video rendering. */
+BKE_sound_init_once();
+
+BKE_materials_init();
+```
+
+Then two additional argument passes that were previously skipped:
+
+```cpp
+/* Pass 3: GUI-only settings (e.g. window start state). */
+if (G.background == 0) {
+  BLI_args_parse(ba, ARG_PASS_SETTINGS_GUI, nullptr, nullptr);
+}
+/* Pass 4: forced settings that must always run regardless of background. */
+BLI_args_parse(ba, ARG_PASS_SETTINGS_FORCE, nullptr, nullptr);
+```
+
 Then Blender switches to the main runtime/UI initialization stage:
 
 ```cpp
 WM_init(C, argc, argv);
 ```
 
-### 4.7 Final parse and execution branch
+### 4.8 Final parse and execution branch
 
-Once `WM_init()` has prepared the runtime, Blender runs the **final** CLI pass:
+Once `WM_init()` has prepared the runtime, Blender explicitly frees the argument parser resources and then runs the **final** CLI pass:
 
 ```cpp
-/* Handles #ARG_PASS_FINAL. */
+/* Handles #ARG_PASS_FINAL. Default callback loads .blend files. */
 BLI_args_parse(ba, ARG_PASS_FINAL, main_args_handle_load_file, C);
+
+/* Free argument parser memory before branching into the event loop or background work. */
+callback_main_atexit(&app_init_data);
+BKE_blender_atexit_unregister(callback_main_atexit, &app_init_data);
 ```
 
 Execution then splits into GUI or background mode:
 
 ```cpp
 if (G.background) {
-  ...
-  exit_code = main_arg_deferred_handle();
-  ...
+  int exit_code;
+  if (app_state.main_arg_deferred != nullptr) {
+    exit_code = main_arg_deferred_handle(); /* Runs deferred --command / render / script. */
+    main_arg_deferred_free();
+  }
+  else {
+    exit_code = G.is_break ? EXIT_FAILURE : EXIT_SUCCESS;
+  }
   WM_exit(C, exit_code);
 }
 else {
+  /* Not supported in GUI mode — deferred actions must have been consumed. */
+  BLI_assert(app_state.main_arg_deferred == nullptr);
+
   WM_init_splash_on_startup(C);
   WM_main(C);
 }
+/* Neither WM_exit nor WM_main return; this code is unreachable. */
+BLI_assert_unreachable();
 ```
 
 So the bootstrapping boundary is:
 
-- **GUI path** → `WM_main(C)` infinite event loop.
-- **Background / automation path** → deferred command/render/script execution, then `WM_exit()`.
+- **GUI path** → `WM_main(C)` infinite event loop (never returns).
+- **Background / automation path** → deferred command/render/script execution, then `WM_exit()` (also never returns).
 
-### 4.8 Background mode overview
+### 4.9 Background mode overview
 
 **Background mode** means Blender runs **without the normal interactive windowed UI/event-loop workflow**. It is mainly intended for **automation**, **batch rendering**, **CLI scripting**, **asset conversion**, and **headless execution on build servers or render nodes**.
 
@@ -550,46 +680,188 @@ blender --background --factory-startup file.blend --python my_script.py
 
 `source/blender/windowmanager/intern/wm_init_exit.cc` is where Blender turns the low-level process into a usable runtime/UI session.
 
-### Verified startup excerpt
+### Complete ordered initialization sequence
+
+The following is the verified sequence of operations inside `WM_init()`, derived directly from the source:
+
+**Phase A – Windowing and input (GUI only)**
 
 ```cpp
-void WM_init(bContext *C, int argc, const char **argv)
-{
-  if (!G.background) {
-    wm_ghost_init(C); /* NOTE: it assigns C to ghost! */
-    wm_init_cursor_data();
-    BKE_sound_jack_sync_callback_set(sound_jack_sync_callback);
-  }
-
-  BKE_addon_pref_type_init();
-  BKE_keyconfig_pref_type_init();
-  wm_operatortypes_register();
-  ...
-  ED_spacetypes_init();
-  ...
-  BLF_init();
-  BLT_lang_init();
-  ...
-  wm_homefile_read_ex(C, &read_homefile_params, nullptr, &params_file_read_post);
-  ...
-  WM_init_gpu();
-  ...
-  BPY_python_start(C, argc, argv);
-  BPY_python_reset(C);
+if (!G.background) {
+  wm_ghost_init(C);  /* Creates the GHOST windowing system; assigns C to the GHOST instance. */
+  wm_init_cursor_data();
+  BKE_sound_jack_sync_callback_set(sound_jack_sync_callback);
+}
 ```
 
-### What happens here
+**Phase B – Operator, panel, menu, gizmo, and undo type registration**
 
-From the code above, `WM_init()` is responsible for:
+```cpp
+BKE_addon_pref_type_init();
+BKE_keyconfig_pref_type_init();
 
-1. starting the platform/windowing layer (`GHOST`) in GUI mode,
-2. registering operators, panels, menus, UI lists, gizmos, editor space types,
-3. initializing fonts, translations, icons, preview images, and studio lights,
-4. reading the home/startup file with `wm_homefile_read_ex(...)`,
-5. initializing GPU/UI runtime in GUI mode,
-6. starting and resetting Blender's Python runtime.
+wm_operatortypes_register();
 
-This is the real **transition from startup shell to full Blender runtime**.
+WM_paneltype_init();      /* Lookup table only; panels register themselves. */
+WM_menutype_init();
+WM_uilisttype_init();
+wm_gizmotype_init();
+wm_gizmogrouptype_init();
+
+ED_undosys_type_init();
+```
+
+**Phase C – Editor callback wiring**
+
+```cpp
+BKE_library_callback_free_notifier_reference_set(WM_main_remove_notifier_reference);
+BKE_region_callback_free_gizmomap_set(wm_gizmomap_remove);
+BKE_region_callback_refresh_tag_gizmomap_set(WM_gizmomap_tag_refresh);
+BKE_library_callback_remap_editor_id_reference_set(WM_main_remap_editor_id_reference);
+BKE_spacedata_callback_id_remap_set(ED_spacedata_id_remap_single);
+DEG_editors_set_update_cb(ED_render_id_flush_update, ED_render_scene_update);
+```
+
+**Phase D – Editor space types and font/language init**
+
+```cpp
+ED_spacetypes_init();      /* Registers all editor space types (3D Viewport, NLA, etc.). */
+ED_node_init_butfuncs();
+
+BLF_init();
+
+BLT_lang_init();
+BLT_lang_set(nullptr);    /* Must run before any .blend reading; versioning may create IDs. */
+```
+
+**Phase E – Icons, previews, message bus, studio lights**
+
+```cpp
+BKE_icons_init(BIFICONID_LAST_STATIC);
+BKE_preview_images_init();  /* Also runs in background mode for scripts using preview icons. */
+
+WM_msgbus_types_init();
+
+BKE_studiolight_init();   /* Must precede home-file loading; versioning needs a default light. */
+```
+
+**Phase F – Home file / startup file read**
+
+```cpp
+wmHomeFileRead_Params read_homefile_params{};
+read_homefile_params.use_data              = true;
+read_homefile_params.use_userdef           = true;
+read_homefile_params.use_factory_settings  = G.factory_startup;
+read_homefile_params.use_empty_data        = false;
+read_homefile_params.filepath_startup_override = nullptr;
+read_homefile_params.app_template_override = WM_init_state_app_template_get();
+read_homefile_params.is_first_time         = true;
+
+wm_homefile_read_ex(C, &read_homefile_params, nullptr, &params_file_read_post);
+
+BLT_lang_set(nullptr);    /* Called again to apply locale from the loaded preferences. */
+```
+
+This reads both `startup.blend` (scene/workspace data) and `userpref.blend` (user preferences) in one call. When `G.factory_startup` is true, built-in defaults are used instead.
+
+**Phase G – File system, GPU initialization (GUI only)**
+
+```cpp
+ED_file_init();   /* Initializes the file browser; can use user preference paths now. */
+
+if (!G.background) {
+  GPU_render_begin();
+#ifdef WITH_INPUT_NDOF
+  WM_ndof_deadzone_set(U.ndof_deadzone);
+#endif
+  WM_init_gpu();   /* Creates DRW context, calls GPU_init(), compiles static shaders. */
+
+  if (!WM_platform_support_perform_checks()) {
+    WM_exit(C, -1); /* Aborts if the GPU/platform does not meet minimum requirements. */
+  }
+
+  GPU_context_begin_frame(GPU_context_active_get());
+  ui::init();      /* Initializes the UI drawing system. */
+  GPU_context_end_frame(GPU_context_active_get());
+  GPU_render_end();
+}
+
+bke::subdiv::init();
+ED_spacemacros_init();
+```
+
+> **Note on GPU deferred init:** `WM_init_gpu()` is designed to be callable lazily. In background mode, headless scripts may eventually trigger GPU work; at that point `wm_ghost_init_background()` and `GPU_init()` run inside `WM_init_gpu()` rather than at startup.
+
+**Phase H – Python runtime**
+
+```cpp
+#ifdef WITH_PYTHON
+  BPY_python_start(C, argc, argv);
+  BPY_python_reset(C);
+#endif
+```
+
+Python is started **after** the home file has been read so that key-maps stored in the `wmWindowManager` (which is blend-file data) already exist when add-on key-map registrations run.
+
+**Phase I – History, recent searches, key configuration**
+
+```cpp
+wm_history_file_read();   /* Loads the recently opened files list. */
+
+if (!G.background) {
+  ui::string_search::read_recent_searches_file();
+}
+
+CTX_py_init_set(C, true); /* Marks Python as initialized in the context. */
+
+/* Postpone key-config updates so add-on key-maps load cleanly (#113603). */
+WM_keyconfig_update_postpone_begin();
+WM_keyconfig_init(C);
+```
+
+**Phase J – Add-on and extension loading, final key-map update**
+
+```cpp
+/* Calls bpy.utils.load_scripts_extensions() via Python. */
+wm_init_scripts_extensions_once(C);
+
+WM_keyconfig_update_postpone_end();
+WM_keyconfig_update_on_startup(static_cast<wmWindowManager *>(G_MAIN->wm.first));
+
+/* Runs post-read handlers registered by the startup file read. */
+wm_homefile_read_post(C, params_file_read_post);
+```
+
+The add-on loading call expands to:
+
+```cpp
+static void wm_init_scripts_extensions_once(bContext *C)
+{
+#ifdef WITH_PYTHON
+  const char *imports[] = {"bpy", nullptr};
+  BPY_run_string_eval(C, imports, "bpy.utils.load_scripts_extensions()");
+#endif
+}
+```
+
+So all installed add-ons and app-template extensions are loaded at this point through Python, which is why add-on key-map registration must happen after `WM_keyconfig_init(C)`.
+
+### Key design note on startup inter-dependencies
+
+The source code itself documents why this ordering is non-trivial:
+
+```
+NOTE(@ideasman42): Startup file and order of initialization.
+
+Loading BLENDER_STARTUP_FILE, BLENDER_USERPREF_FILE, starting Python
+and other sub-systems, have inter-dependencies, for example:
+
+- Some sub-systems depend on the preferences (initializing icons depend on the theme).
+- Add-ons depend on the preferences to know what has been enabled.
+- Add-ons depend on the window-manager to register their key-maps.
+- Evaluating the startup file depends on Python for animation-drivers (see #89046).
+- Starting Python depends on the startup file so key-maps can be added in the WM.
+```
 
 ### Factory-startup link
 
@@ -604,9 +876,104 @@ So `--factory-startup` directly changes how the initial home file/preferences ar
 
 ---
 
-## 6) Runtime-global state used during bootstrapping
+## 6) `WM_main()` – the GUI event loop
 
-### 6.1 `Global G` and `UserDef U`
+**File:** `source/blender/windowmanager/intern/wm.cc`
+
+Once `WM_init()` completes and `WM_init_splash_on_startup()` has optionally shown the splash screen, the process enters the infinite GUI event loop:
+
+```cpp
+void WM_main(bContext *C)
+{
+  /* Single refresh before handling events.
+   * Ensures the depsgraph is evaluated before any operators run. */
+  wm_event_do_refresh_wm_and_depsgraph(C);
+
+  while (true) {
+    /* 1. Collect OS/platform events (keyboard, mouse, window resize, etc.)
+     *    from GHOST and append them to per-window event queues. */
+    wm_window_events_process(C);
+
+    /* 2. Dispatch queued events to all registered handlers:
+     *    window, screen, area, region, modal, key-map handlers. */
+    wm_event_do_handlers(C);
+
+    /* 3. Process accumulated notifiers:
+     *    handlers register change notes; this pass evaluates and caches them. */
+    wm_event_do_notifiers(C);
+
+    /* 4. Redraw any regions flagged dirty by the notifier pass. */
+    wm_draw_update(C);
+  }
+}
+```
+
+This is a **blocking infinite loop** — it never returns under normal operation. The only way out is through `WM_exit()`, which is typically invoked by the `WM_OT_quit_blender` operator or from the `wm_exit_handler` modal handler (used by `wm_exit_schedule_delayed()`).
+
+| Step     | Function                               | Responsibility                                           |
+| -------- | -------------------------------------- | -------------------------------------------------------- |
+| Pre-loop | `wm_event_do_refresh_wm_and_depsgraph` | Initial depsgraph evaluation before any input            |
+| 1        | `wm_window_events_process`             | Poll GHOST for OS events; push to window queues          |
+| 2        | `wm_event_do_handlers`                 | Route events through key-map, modal, and region handlers |
+| 3        | `wm_event_do_notifiers`                | Evaluate change notifications; trigger redraws           |
+| 4        | `wm_draw_update`                       | Redraw all dirty regions and composite the final frame   |
+
+---
+
+## 7) `WM_exit()` – the shutdown sequence
+
+**File:** `source/blender/windowmanager/intern/wm_init_exit.cc`
+
+`WM_exit()` is the top-level shutdown entry point:
+
+```cpp
+void WM_exit(bContext *C, const int exit_code)
+{
+  const bool do_user_exit_actions = G.background ? false : (exit_code == EXIT_SUCCESS);
+  WM_exit_ex(C, true, do_user_exit_actions);
+
+  if (!CLG_quiet_get()) {
+    printf("\nBlender quit\n");
+  }
+  exit(exit_code);
+}
+```
+
+`WM_exit_ex()` performs the actual teardown in the following order:
+
+| Order | Subsystem                    | Notes                                                                                                                       |
+| ----- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 1     | User exit actions (optional) | Saves preferences and recent files if exiting normally from GUI                                                             |
+| 2     | Animation copy buffers       | `ANIM_fcurves_copybuf_free()` and related                                                                                   |
+| 3     | Gizmo type tables            | `wm_gizmomaptypes_free()`, `wm_gizmogrouptype_free()`, `wm_gizmotype_free()`                                                |
+| 4     | UI list types                | `WM_uilisttype_free()`                                                                                                      |
+| 5     | Font system                  | `BLF_exit()`                                                                                                                |
+| 6     | Translation system           | `BLT_lang_free()`                                                                                                           |
+| 7     | Keying set infos             | `animrig::keyingset_infos_exit()`                                                                                           |
+| 8     | Python                       | `BPY_python_end(do_python_exit)` — before `BKE_blender_free` so garbage collection still has the library                    |
+| 9     | File selector menus          | `ED_file_exit()`                                                                                                            |
+| 10    | GPU resources + UI           | `DRW_gpu_context_enable_ex`, `ui::ui_exit()`, `GPU_shader_cache_dir_clear_old()`, `GPU_exit()`, `DRW_gpu_context_destroy()` |
+| 11    | User preferences             | `BKE_blender_userdef_data_free(&U, false)`                                                                                  |
+| 12    | RNA type system              | `RNA_exit()` — after Python so struct Python slots are cleared first                                                        |
+| 13    | GHOST windowing              | `wm_ghost_exit()`                                                                                                           |
+| 14    | bContext                     | `CTX_free(C)`                                                                                                               |
+| 15    | DNA/SDNA                     | `DNA_sdna_current_free()`                                                                                                   |
+| 16    | Thread API                   | `BLI_threadapi_exit()`, `BLI_task_scheduler_exit()`                                                                         |
+| 17    | Sound/FFMPEG                 | `BKE_sound_exit_once()`                                                                                                     |
+| 18    | App directories              | `BKE_appdir_exit()`                                                                                                         |
+| 19    | Atexit callbacks             | `BKE_blender_atexit()`                                                                                                      |
+| 20    | Autosave + temp dir          | `wm_autosave_delete()`, `BKE_tempdir_session_purge()`                                                                       |
+| 21    | Logging                      | `CLG_exit()` — must be last; nothing may log after this                                                                     |
+
+Notice that `CLG_exit()` is intentionally the **last** thing shut down because almost every subsystem above may log warning or info messages during its own teardown.
+
+---
+
+---
+
+## 8) Runtime-global state used during bootstrapping
+
+### 8.1 `Global G` and `UserDef U`
 
 In `source/blender/blenkernel/intern/blender.cc`:
 
@@ -638,7 +1005,7 @@ void BKE_blender_globals_init()
 
 This shows that bootstrapping creates and resets the top-level runtime state very early.
 
-### 6.2 Important fields in `struct Global`
+### 8.2 Important fields in `struct Global`
 
 From `source/blender/blenkernel/BKE_global.hh`:
 
@@ -677,7 +1044,7 @@ bool factory_startup;
 int debug;
 ```
 
-### 6.3 `ApplicationState app_state`
+### 8.3 `ApplicationState app_state`
 
 `source/creator/creator.cc` also defines a smaller startup-global state:
 
@@ -700,9 +1067,9 @@ This object stores:
 
 ---
 
-## 7) Command-line option architecture and processing
+## 9) Command-line option architecture and processing
 
-### 7.1 Generic CLI parser used by Blender
+### 9.1 Generic CLI parser used by Blender
 
 Blender does not hard-code all parsing inside `main()`. It uses the reusable `BLI_args` API from `source/blender/blenlib/BLI_args.h`:
 
@@ -716,23 +1083,23 @@ void BLI_args_parse(struct bArgs *ba, int pass, BA_ArgCallback default_cb, void 
 
 So each option is registered with a callback and then executed by pass.
 
-### 7.2 Pass order is explicitly defined
+### 9.2 Pass order is explicitly defined
 
 In `source/creator/creator_intern.h`:
 
 ```cpp
 enum {
-  ARG_PASS_ENVIRONMENT = 1,
-  ARG_PASS_SETTINGS = 2,
-  ARG_PASS_SETTINGS_GUI = 3,
-  ARG_PASS_SETTINGS_FORCE = 4,
-  ARG_PASS_FINAL = 5,
+  ARG_PASS_ENVIRONMENT = 1,   /* Thread count, env paths — before BKE_appdir_init. */
+  ARG_PASS_SETTINGS = 2,      /* Background mode, factory-startup, debug, animation player. */
+  ARG_PASS_SETTINGS_GUI = 3,  /* GUI-only settings (skipped entirely in background mode). */
+  ARG_PASS_SETTINGS_FORCE = 4,/* Settings that must always run even after SETTINGS_GUI was skipped. */
+  ARG_PASS_FINAL = 5,         /* File loads, render, python scripts — after WM_init(). */
 };
 ```
 
-This gives Blender a **staged startup parser**, not a single one-shot parse.
+This gives Blender a **staged startup parser**, not a single one-shot parse. The distinction between passes 3 and 4 means some options can force-apply regardless of headless mode, while others are silently skipped when there is no display.
 
-### 7.3 `main_args_setup()` registers the options
+### 9.3 `main_args_setup()` registers the options
 
 In `source/creator/creator_args.cc`:
 
@@ -763,7 +1130,7 @@ void main_args_setup(bContext *C, bArgs *ba, bool all)
 
 This is the main registration table for Blender's startup CLI behavior.
 
-### 7.4 Order of arguments is semantically important
+### 9.4 Order of arguments is semantically important
 
 Blender's own help text says:
 
@@ -780,27 +1147,27 @@ So some arguments **do work immediately** and can be overwritten by later file l
 
 ---
 
-## 8) Important command-line switches, handlers, and effects
+## 10) Important command-line switches, handlers, and effects
 
-| Switch                                                                                             | Handler / Source                                           | Pass                   | Verified effect in code                                                                                         |
-| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `-b`, `--background`                                                                               | `arg_handle_background_mode_set()` in `creator_args.cc`    | `ARG_PASS_SETTINGS`    | Calls `background_mode_set();`, sets `G.background = true;`, and forces `BKE_sound_force_device("None");`       |
-| `-c`, `--command`                                                                                  | `arg_handle_command_set()`                                 | `ARG_PASS_SETTINGS`    | Implies background mode, suppresses info output, and uses `main_arg_deferred_setup(...)` for deferred execution |
-| `--factory-startup`                                                                                | `arg_handle_factory_startup_set()`                         | `ARG_PASS_SETTINGS`    | `G.factory_startup = true;` and `G.f \|= G_FLAG_USERPREF_NO_SAVE_ON_EXIT;`                                      |
-| `-d`, `--debug`                                                                                    | `arg_handle_debug_mode_set()`                              | `ARG_PASS_SETTINGS`    | Sets `G.debug \|= G_DEBUG;`, enables memory debug, prints build info and argument state                         |
-| `--debug-*`                                                                                        | `arg_handle_debug_mode_generic_set()` and related handlers | `ARG_PASS_SETTINGS`    | ORs specific debug bit flags into `G.debug`                                                                     |
-| `--offline-mode` / `--online-mode`                                                                 | `arg_handle_internet_allow_set()`                          | `ARG_PASS_SETTINGS`    | Sets/clears `G_FLAG_INTERNET_ALLOW` and override flags in `G.f`                                                 |
-| `-t`, `--threads`                                                                                  | `arg_handle_threads_set()`                                 | `ARG_PASS_ENVIRONMENT` | Calls `BLI_system_num_threads_override_set(threads);`                                                           |
+| Switch                                                                                             | Handler / Source                                           | Pass                   | Verified effect in code                                                                                           |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `-b`, `--background`                                                                               | `arg_handle_background_mode_set()` in `creator_args.cc`    | `ARG_PASS_SETTINGS`    | Calls `background_mode_set();`, sets `G.background = true;`, and forces `BKE_sound_force_device("None");`         |
+| `-c`, `--command`                                                                                  | `arg_handle_command_set()`                                 | `ARG_PASS_SETTINGS`    | Implies background mode, suppresses info output, and uses `main_arg_deferred_setup(...)` for deferred execution   |
+| `--factory-startup`                                                                                | `arg_handle_factory_startup_set()`                         | `ARG_PASS_SETTINGS`    | `G.factory_startup = true;` and `G.f \|= G_FLAG_USERPREF_NO_SAVE_ON_EXIT;`                                        |
+| `-d`, `--debug`                                                                                    | `arg_handle_debug_mode_set()`                              | `ARG_PASS_SETTINGS`    | Sets `G.debug \|= G_DEBUG;`, enables memory debug, prints build info and argument state                           |
+| `--debug-*`                                                                                        | `arg_handle_debug_mode_generic_set()` and related handlers | `ARG_PASS_SETTINGS`    | ORs specific debug bit flags into `G.debug`                                                                       |
+| `--offline-mode` / `--online-mode`                                                                 | `arg_handle_internet_allow_set()`                          | `ARG_PASS_SETTINGS`    | Sets/clears `G_FLAG_INTERNET_ALLOW` and override flags in `G.f`                                                   |
+| `-t`, `--threads`                                                                                  | `arg_handle_threads_set()`                                 | `ARG_PASS_ENVIRONMENT` | Calls `BLI_system_num_threads_override_set(threads);`                                                             |
 | `--python-use-system-env`                                                                          | `arg_handle_env_system_set()`                              | `ARG_PASS_ENVIRONMENT` | Forces Blender to respect standard OS environment variables like `PYTHONPATH` rather than its bundled Python path |
-| `--env-system-datafiles`, `--env-system-scripts`, `--env-system-python`, `--env-system-extensions` | `arg_handle_env_system_set()`                              | `ARG_PASS_ENVIRONMENT` | Sets Blender path-related environment variables before appdir initialization                                    |
-| `-f`, `--render-frame`                                                                             | `arg_handle_render_frame()`                                | `ARG_PASS_FINAL`       | Parses frame/range arguments and calls `RE_RenderAnim(...)`                                                     |
-| `-a`, `--render-anim`                                                                              | `arg_handle_render_animation()`                            | `ARG_PASS_FINAL`       | Renders from `scene->r.sfra` to `scene->r.efra`                                                                 |
-| `-P`, `--python`                                                                                   | `arg_handle_python_file_run()`                             | `ARG_PASS_FINAL`       | Canonicalizes the path and runs `BPY_run_filepath(C, filepath, nullptr)`                                        |
-| `--python-expr`                                                                                    | `arg_handle_python_expr_run()`                             | `ARG_PASS_FINAL`       | Executes `BPY_run_string_exec(C, nullptr, argv[1])`                                                             |
-| `--python-exit-code`                                                                               | `arg_handle_python_exit_code_set()`                        | `ARG_PASS_FINAL`       | Sets `app_state.exit_code_on_error.python` for CLI Python failures                                              |
-| `-o`, `--render-output`                                                                            | `arg_handle_output_set()`                                  | `ARG_PASS_FINAL`       | Writes into `scene->r.pic`                                                                                      |
-| `-E`, `--engine`                                                                                   | `arg_handle_engine_set()`                                  | `ARG_PASS_FINAL`       | Updates `scene->r.engine` if the engine exists                                                                  |
-| `-F`, `--render-format`                                                                            | `arg_handle_image_type_set()`                              | `ARG_PASS_FINAL`       | Converts the requested output format and updates `scene->r.im_format`                                           |
+| `--env-system-datafiles`, `--env-system-scripts`, `--env-system-python`, `--env-system-extensions` | `arg_handle_env_system_set()`                              | `ARG_PASS_ENVIRONMENT` | Sets Blender path-related environment variables before appdir initialization                                      |
+| `-f`, `--render-frame`                                                                             | `arg_handle_render_frame()`                                | `ARG_PASS_FINAL`       | Parses frame/range arguments and calls `RE_RenderAnim(...)`                                                       |
+| `-a`, `--render-anim`                                                                              | `arg_handle_render_animation()`                            | `ARG_PASS_FINAL`       | Renders from `scene->r.sfra` to `scene->r.efra`                                                                   |
+| `-P`, `--python`                                                                                   | `arg_handle_python_file_run()`                             | `ARG_PASS_FINAL`       | Canonicalizes the path and runs `BPY_run_filepath(C, filepath, nullptr)`                                          |
+| `--python-expr`                                                                                    | `arg_handle_python_expr_run()`                             | `ARG_PASS_FINAL`       | Executes `BPY_run_string_exec(C, nullptr, argv[1])`                                                               |
+| `--python-exit-code`                                                                               | `arg_handle_python_exit_code_set()`                        | `ARG_PASS_FINAL`       | Sets `app_state.exit_code_on_error.python` for CLI Python failures                                                |
+| `-o`, `--render-output`                                                                            | `arg_handle_output_set()`                                  | `ARG_PASS_FINAL`       | Writes into `scene->r.pic`                                                                                        |
+| `-E`, `--engine`                                                                                   | `arg_handle_engine_set()`                                  | `ARG_PASS_FINAL`       | Updates `scene->r.engine` if the engine exists                                                                    |
+| `-F`, `--render-format`                                                                            | `arg_handle_image_type_set()`                              | `ARG_PASS_FINAL`       | Converts the requested output format and updates `scene->r.im_format`                                             |
 
 ### Example supporting excerpts
 
@@ -839,9 +1206,9 @@ RE_RenderAnim(re, bmain, scene, nullptr, nullptr, frame, frame, scene->r.frame_s
 
 ---
 
-## 9) How file loading and deferred background work are handled
+## 11) How file loading and deferred background work are handled
 
-### 9.1 Unknown / trailing non-option arguments become blend files
+### 11.1 Unknown / trailing non-option arguments become blend files
 
 `main_args_handle_load_file()` in `creator_args.cc` is used as the default callback in the final parse pass:
 
@@ -864,7 +1231,7 @@ int main_args_handle_load_file(int /*argc*/, const char **argv, void *data)
 
 So, after registered options are handled, remaining arguments are assumed to be files to open.
 
-### 9.2 Some CLI actions are explicitly deferred until the runtime is fully initialized
+### 11.2 Some CLI actions are explicitly deferred until the runtime is fully initialized
 
 Blender stores deferred callbacks in `main_arg_deferred_setup()`:
 
@@ -896,7 +1263,7 @@ This is how `--command` and similar background operations wait until Python/UI/r
 
 ---
 
-## 10) Signal and crash handler bootstrapping
+## 12) Signal and crash handler bootstrapping
 
 `source/creator/creator_signals.cc` installs signal handlers after the settings pass:
 
@@ -934,20 +1301,26 @@ This is part of bootstrapping because it changes how the process reacts to failu
 
 ---
 
-## 11) Short Answers
+## 13) Short Answers
 
 From the source code, Blender bootstrapping is organized like this:
 
 1. **Entry** arrives in `source/creator/creator.cc::main()` (or `wWinMain()` / Python-module alias).
-2. `main()` performs **very early platform, allocator, logging, and context setup**.
+2. `main()` performs **very early platform, allocator, logging, and context setup**, including LD_PRELOAD restore, TBB huge pages, unbuffered stdout (debug), and Win32 UTF-16 arg conversion.
 3. `BKE_blender_globals_init()` creates the runtime-global state (`G`, `G_MAIN`, default flags).
-4. `main_args_setup()` + `BLI_args_parse()` implement a **multi-pass CLI startup pipeline**.
-5. `WM_init()` performs the **real runtime hand-off**: home file, operators, UI/editor types, GPU, Python, preferences.
-6. Startup ends in either:
-   - `WM_main(C)` for the interactive GUI loop, or
-   - deferred background execution + `WM_exit(C)` for headless automation.
+4. `BKE_callback_global_init()` registers the global callback system before any file loading.
+5. `main_args_setup()` + `BLI_args_parse()` implement a **five-pass CLI startup pipeline** (ENVIRONMENT → SETTINGS → SETTINGS_GUI → SETTINGS_FORCE → FINAL).
+6. `main_signal_setup()` installs crash/abort handlers after `ARG_PASS_SETTINGS` so background mode is already known.
+7. Core media/render subsystems initialize (`IMB`, `MOV`, `RNA`, `RE`, nodes, sound, materials).
+8. `ARG_PASS_SETTINGS_GUI` and `ARG_PASS_SETTINGS_FORCE` run just before `WM_init()`.
+9. `WM_init()` performs the **real runtime hand-off**: GHOST, operators, editor types, home file, GPU, Python, add-ons, key configuration.
+10. `ARG_PASS_FINAL` runs after `WM_init()` to load blend files and execute Python scripts/render tasks.
+11. Startup ends in either:
+    - `WM_main(C)` for the interactive GUI loop (four-step: events → handlers → notifiers → draw), or
+    - deferred background execution + `WM_exit(C)` for headless automation.
+12. `WM_exit_ex()` tears down all subsystems in a fixed safe order, with `CLG_exit()` last.
 
-## 12) Source-level conclusion
+## 14) Source-level conclusion
 
 If you want to understand Blender startup from the source tree, start with these files in order:
 
@@ -959,3 +1332,5 @@ If you want to understand Blender startup from the source tree, start with these
 6. `source/blender/windowmanager/intern/wm_init_exit.cc`
 7. `source/blender/windowmanager/intern/wm.cc`
 8. `source/creator/creator_signals.cc`
+9. `source/blender/windowmanager/intern/wm_event_system.cc`
+10. `source/blender/windowmanager/intern/wm_draw.cc`

@@ -550,7 +550,8 @@ flowchart TD
     G --> H{has UpdateFunc?}
     H -- yes --> I[Call update callback\ne.g. rna_Object_dependency_update]
     H -- no --> J{noteflag != 0?}
-    J -- yes --> K[WM_main_add_notifier\nNC_OBJECT | ND_DRAW]
+    J -- yes --> K["WM_main_add_notifier\nNC_OBJECT | ND_DRAW"]
+    J -- no --> L
     I --> K
     K --> L[Depsgraph tag set\nViewport redraws]
 ```
@@ -563,7 +564,7 @@ flowchart LR
     B --> C{step type}
     C -- ".propname" --> D[RNA_struct_find_property\nreturns PropertyRNA*]
     C -- "[index]" --> E[CollectionLookupIntFunc\nreturns PointerRNA]
-    C -- '["name"]' --> F[CollectionLookupStringFunc\nreturns PointerRNA]
+    C -- "[name]" --> F[CollectionLookupStringFunc\nreturns PointerRNA]
     D --> G{PROP_POINTER?}
     G -- yes --> H[RNA_property_pointer_get\nadvance PointerRNA]
     G -- no --> I[Return final PointerRNA\n+ PropertyRNA]

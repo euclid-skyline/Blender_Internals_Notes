@@ -1319,6 +1319,8 @@ This is part of bootstrapping because it changes how the process reacts to failu
 
 ## 13) Short Answers
 
+**How is Blender's bootstrapping sequence organized according to the source code?**
+
 From the source code, Blender bootstrapping is organized like this:
 
 1. **Entry** arrives in `source/creator/creator.cc::main()` (or `wWinMain()` / Python-module alias).

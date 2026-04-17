@@ -34,17 +34,17 @@
 
 ## 1) Notifier source-file map
 
-| File | Important symbols | Role in the notifier system |
-| --- | --- | --- |
-| `source/blender/windowmanager/WM_api.hh` | `WM_event_add_notifier_ex`, `WM_event_add_notifier`, `WM_main_add_notifier` | Public API used by the rest of Blender |
-| `source/blender/windowmanager/WM_types.hh` | `wmNotifier`, `NC_*`, `ND_*`, `NA_*` | Core notifier structure and type masks |
-| `source/blender/windowmanager/intern/wm_event_system.cc` | `wm_event_add_notifier_intern`, `wm_event_do_notifiers` | Queueing, deduplication, and delivery |
-| `source/blender/editors/screen/area.cc` | `ED_region_do_listen`, `ED_area_do_listen` | Region/area listeners that react to notifiers |
-| `source/blender/editors/screen/screen_edit.cc` | `ED_screen_do_listen` | Screen-level listener reactions |
-| `source/blender/windowmanager/intern/wm_files.cc` | `WM_event_add_notifier(..., file-read type, ...)` | File-read / save examples |
-| `source/blender/editors/undo/ed_undo.cc` | `WM_event_add_notifier(..., undo type, ...)` | Undo / redo notifier examples |
-| `source/blender/editors/screen/screen_ops.cc` | `WM_event_add_notifier(..., frame-change type, ...)` | Frame-change notifier examples |
-| `source/blender/windowmanager/intern/wm_jobs.cc` | `WM_event_add_notifier_ex(..., job type, ...)` | Job progress / completion notifications |
+| File                                                     | Important symbols                                                           | Role in the notifier system                   |
+| -------------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------- |
+| `source/blender/windowmanager/WM_api.hh`                 | `WM_event_add_notifier_ex`, `WM_event_add_notifier`, `WM_main_add_notifier` | Public API used by the rest of Blender        |
+| `source/blender/windowmanager/WM_types.hh`               | `wmNotifier`, `NC_*`, `ND_*`, `NA_*`                                        | Core notifier structure and type masks        |
+| `source/blender/windowmanager/intern/wm_event_system.cc` | `wm_event_add_notifier_intern`, `wm_event_do_notifiers`                     | Queueing, deduplication, and delivery         |
+| `source/blender/editors/screen/area.cc`                  | `ED_region_do_listen`, `ED_area_do_listen`                                  | Region/area listeners that react to notifiers |
+| `source/blender/editors/screen/screen_edit.cc`           | `ED_screen_do_listen`                                                       | Screen-level listener reactions               |
+| `source/blender/windowmanager/intern/wm_files.cc`        | `WM_event_add_notifier(..., file-read type, ...)`                           | File-read / save examples                     |
+| `source/blender/editors/undo/ed_undo.cc`                 | `WM_event_add_notifier(..., undo type, ...)`                                | Undo / redo notifier examples                 |
+| `source/blender/editors/screen/screen_ops.cc`            | `WM_event_add_notifier(..., frame-change type, ...)`                        | Frame-change notifier examples                |
+| `source/blender/windowmanager/intern/wm_jobs.cc`         | `WM_event_add_notifier_ex(..., job type, ...)`                              | Job progress / completion notifications       |
 
 ---
 
@@ -93,11 +93,17 @@ Blender documents the packing scheme directly in the same file:
 Representative definitions in `WM_types.hh` include:
 
 ```cpp
-#define NC_WM (1 << 24)
-#define NC_WINDOW (2 << 24)
-#define NC_SCREEN (4 << 24)
-#define NC_SCENE (5 << 24)
-#define NC_SPACE (16 << 24)
+#define NC_WM        (1 << 24)
+#define NC_WINDOW    (2 << 24)
+#define NC_WORKSPACE (3 << 24)   /* 5.1.1: between NC_WINDOW and NC_SCREEN */
+#define NC_SCREEN    (4 << 24)
+#define NC_SCENE     (5 << 24)
+#define NC_SPACE     (16 << 24)
+```
+
+> **5.1.1 update:** `NC_WORKSPACE = (3 << 24)` sits between `NC_WINDOW` and `NC_SCREEN`. It was missing from the representative list above.
+
+```cpp
 
 #define ND_FILEREAD (1 << 16)
 #define ND_FILESAVE (2 << 16)
@@ -119,9 +125,9 @@ means: **scene-related change, specifically a frame-change notification**.
 
 This distinction is important:
 
-| Type | Purpose |
-| --- | --- |
-| `wmEvent` | Raw input and interaction events, such as mouse/keyboard activity |
+| Type         | Purpose                                                                          |
+| ------------ | -------------------------------------------------------------------------------- |
+| `wmEvent`    | Raw input and interaction events, such as mouse/keyboard activity                |
 | `wmNotifier` | Post-change notification saying some part of the UI/data should react or refresh |
 
 So notifiers are **not the same thing as input events**. They are the WM's decoupled refresh/update messaging mechanism.
@@ -130,10 +136,10 @@ So notifiers are **not the same thing as input events**. They are the WM's decou
 
 Yes - they are related, but they are **not the same mechanism**.
 
-| Mechanism | Main role | Typical granularity |
-| --- | --- | --- |
-| `wmNotifier` queue | Broad **"something changed"** refresh signaling | screen / area / region listener updates |
-| WM message bus (`wmMsgBus`) | Targeted **publish/subscribe** callbacks | specific RNA/property/key subscriptions |
+| Mechanism                   | Main role                                       | Typical granularity                     |
+| --------------------------- | ----------------------------------------------- | --------------------------------------- |
+| `wmNotifier` queue          | Broad **"something changed"** refresh signaling | screen / area / region listener updates |
+| WM message bus (`wmMsgBus`) | Targeted **publish/subscribe** callbacks        | specific RNA/property/key subscriptions |
 
 The source-level relationship is that both belong to the Window Manager runtime update path. Notifiers propagate coarse refresh information through listeners, while the message bus delivers more focused observer-style callbacks.
 
@@ -234,6 +240,7 @@ The notifier pass runs directly in the WM main loop.
 **File:** `source/blender/windowmanager/intern/wm.cc`
 
 ```cpp
+wm_event_do_refresh_wm_and_depsgraph(C);  /* called once before the loop */
 while (true) {
   wm_window_events_process(C);
 
@@ -243,6 +250,8 @@ while (true) {
   wm_draw_update(C);
 }
 ```
+
+> **5.1.1 update:** `WM_main()` calls `wm_event_do_refresh_wm_and_depsgraph(C)` **once before** the `while (true)` loop to ensure the depsgraph is in a valid state on startup. This call is not repeated inside the loop; depsgraph refreshes within the loop are driven by notifiers and handler activity.
 
 This makes the notifier phase the bridge between:
 
@@ -261,6 +270,8 @@ void wm_event_do_notifiers(bContext *C)
   GPU_render_begin();
   wm_event_timers_execute(C);
   ...
+  /* FIRST PASS: iterate windows, handle WM-level actions (workspace/screen/animation
+   * changes). Notifiers are intentionally left in the queue during this pass. */
   for (wmWindow &win : wm->windows) {
     ...
     for (const wmNotifier *note = ...; note; note = note_next) {
@@ -270,15 +281,37 @@ void wm_event_do_notifiers(bContext *C)
           wm->file_saved = 1;
           WM_window_title_refresh(wm, &win);
         }
+        else if (note->data == ND_DATACHANGED) {
+          WM_window_title_refresh(wm, &win);
+        }
         else if (note->data == ND_UNDO) {
           ED_preview_restart_work(C);
         }
       }
+      if (notifier_refreshes_node_group_operators(*note)) {
+        ed::geometry::register_node_group_operators(*C);
+      }
       ...
     }
   }
+  /* SECOND PASS: pop notifiers one-by-one and dispatch to listeners.
+   * ED_workspace_do_listen, ED_screen_do_listen, area/region listeners
+   * are only called from this second loop. */
+  while (wmNotifier *note = static_cast<wmNotifier *>(wm->runtime->notifier_queue.first)) {
+    ...
+    ED_workspace_do_listen(C, note);
+    ED_screen_do_listen(C, note);
+    /* dispatch to regions / areas */
+    ...
+  }
 }
 ```
+
+> **5.1.1 update:**
+>
+> - Added `ND_DATACHANGED` case: calls `WM_window_title_refresh` (same as `ND_FILEREAD/ND_FILESAVE`, but for general data changes).
+> - Added `notifier_refreshes_node_group_operators(*note)` check after the `NC_WM` block: when a notifier requires it, `ed::geometry::register_node_group_operators(*C)` is called to refresh node-group operators.
+> - The function has an explicit **two-pass** design: the first `for` loop iterates windows and handles WM-level responses (workspace/screen/animation), intentionally leaving notifiers in the queue; then a **second `while` loop** pops notifiers and dispatches them to `ED_workspace_do_listen`, `ED_screen_do_listen`, and area/region listeners. The simplified excerpt above now reflects this structure.
 
 So WM first handles certain global notifier categories itself, including:
 

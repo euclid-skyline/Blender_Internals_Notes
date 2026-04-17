@@ -42,16 +42,16 @@
 
 ## 1) Event-system source-file map
 
-| File | Important symbols | Role in Blender events |
-| --- | --- | --- |
-| `source/blender/windowmanager/wm_event_types.hh` | `enum wmEventType`, `TIMER`, `MOUSEMOVE`, `NDOF_MOTION`, `EVT_*` | Defines Blender event codes |
-| `source/blender/windowmanager/WM_types.hh` | `wmEvent`, `wmTimer`, `KM_PRESS`, `KM_CLICK`, `KM_PRESS_DRAG` | Core event and timer data structures |
-| `source/blender/blenkernel/BKE_wm_runtime.hh` | `struct WindowRuntime` | Holds the per-window event queue and event-state cache |
-| `source/blender/windowmanager/wm_event_system.hh` | `wm_event_do_handlers`, `wm_event_add_ghostevent`, `eWM_EventHandlerType` | Internal event-dispatch API |
-| `source/blender/windowmanager/intern/wm_event_system.cc` | `wm_event_add_intern`, `wm_event_add_ghostevent`, `wm_handlers_do_intern`, `wm_event_do_handlers` | Queue construction and handler dispatch |
-| `source/blender/windowmanager/intern/wm_window.cc` | `wm_ghost_init`, `ghost_event_proc`, `wm_window_events_process`, `WM_event_timer_add` | OS event ingestion and timer processing |
-| `source/blender/windowmanager/intern/wm.cc` | `WM_main` | Main runtime loop that drives event handling |
-| `source/blender/windowmanager/intern/wm_init_exit.cc` | `WM_init` | Event-system bootstrap during Blender startup |
+| File                                                     | Important symbols                                                                                 | Role in Blender events                                 |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `source/blender/windowmanager/wm_event_types.hh`         | `enum wmEventType`, `TIMER`, `MOUSEMOVE`, `NDOF_MOTION`, `EVT_*`                                  | Defines Blender event codes                            |
+| `source/blender/windowmanager/WM_types.hh`               | `wmEvent`, `wmTimer`, `KM_PRESS`, `KM_CLICK`, `KM_PRESS_DRAG`                                     | Core event and timer data structures                   |
+| `source/blender/blenkernel/BKE_wm_runtime.hh`            | `struct WindowRuntime`                                                                            | Holds the per-window event queue and event-state cache |
+| `source/blender/windowmanager/wm_event_system.hh`        | `wm_event_do_handlers`, `wm_event_add_ghostevent`, `eWM_EventHandlerType`                         | Internal event-dispatch API                            |
+| `source/blender/windowmanager/intern/wm_event_system.cc` | `wm_event_add_intern`, `wm_event_add_ghostevent`, `wm_handlers_do_intern`, `wm_event_do_handlers` | Queue construction and handler dispatch                |
+| `source/blender/windowmanager/intern/wm_window.cc`       | `wm_ghost_init`, `ghost_event_proc`, `wm_window_events_process`, `WM_event_timer_add`             | OS event ingestion and timer processing                |
+| `source/blender/windowmanager/intern/wm.cc`              | `WM_main`                                                                                         | Main runtime loop that drives event handling           |
+| `source/blender/windowmanager/intern/wm_init_exit.cc`    | `WM_init`                                                                                         | Event-system bootstrap during Blender startup          |
 
 ---
 
@@ -234,16 +234,21 @@ Some event types carry extra data through `wmEvent.customdata`.
 
 ```cpp
 /* The #wmEvent::type implies the following #wmEvent::custodata.
- * - #EVT_DROP: uses #ListBaseT<wmDrag>.
+ * - #EVT_ACTIONZONE_AREA / #EVT_ACTIONZONE_FULLSCREEN: Uses #sActionzoneData.
+ * - #EVT_DROP: uses #ListBaseT<wmDrag> (also #wmEvent::custom == #EVT_DATA_DRAGDROP).
+ *   Typically set to #wmWindowManager::drags.
  * - #EVT_FILESELECT: uses #wmOperator.
- * - #EVT_XR_ACTION: uses #wmXrActionData.
- * - #NDOF_MOTION: uses #wmNDOFMotionData.
- * - #TIMER: uses #wmTimer.
+ * - #EVT_XR_ACTION: uses #wmXrActionData (also #wmEvent::custom == #EVT_DATA_XR).
+ * - #NDOF_MOTION: uses #wmNDOFMotionData (also #wmEvent::custom == #EVT_DATA_NDOF_MOTION).
+ * - #TIMER: uses #wmTimer (also #wmEvent::custom == #EVT_DATA_TIMER).
  */
 ```
 
+> **5.1.1 update:** Added `EVT_ACTIONZONE_AREA / EVT_ACTIONZONE_FULLSCREEN` (uses `sActionzoneData`). The `EVT_DROP` entry now notes that `custom == EVT_DATA_DRAGDROP` and that `customdata` is typically `wmWindowManager::drags`. Other entries similarly note their `EVT_DATA_*` tag.
+
 So Blender events can carry richer payloads for:
 
+- action-zone detection,
 - drag-and-drop,
 - file-browser/operator callbacks,
 - XR actions,
@@ -268,10 +273,10 @@ enum eWM_EventHandlerType {
 
 So in Blender there are two layers to keep separate:
 
-| Layer | Examples |
-| --- | --- |
-| **Raw event types** | `MOUSEMOVE`, `EVT_AKEY`, `TIMERJOBS`, `NDOF_MOTION`, `EVT_DROP` |
-| **Handler routes** | `WM_HANDLER_TYPE_UI`, `WM_HANDLER_TYPE_KEYMAP`, `WM_HANDLER_TYPE_OP`, `WM_HANDLER_TYPE_GIZMO` |
+| Layer               | Examples                                                                                      |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| **Raw event types** | `MOUSEMOVE`, `EVT_AKEY`, `TIMERJOBS`, `NDOF_MOTION`, `EVT_DROP`                               |
+| **Handler routes**  | `WM_HANDLER_TYPE_UI`, `WM_HANDLER_TYPE_KEYMAP`, `WM_HANDLER_TYPE_OP`, `WM_HANDLER_TYPE_GIZMO` |
 
 That distinction is central to understanding Blender's event processing architecture.
 
@@ -475,8 +480,15 @@ wmTimer *WM_event_timer_add(wmWindowManager *wm,
                             const wmEventType event_type,
                             const double time_step)
 {
-  ...
+  BLI_assert(ISTIMER(event_type));
+
+  wmTimer *wt = MEM_new_zeroed<wmTimer>("window timer");
+  BLI_assert(time_step >= 0.0f);
+
   wt->event_type = event_type;
+  wt->time_last = BLI_time_now_seconds();
+  wt->time_next = wt->time_last + time_step;
+  wt->time_start = wt->time_last;
   wt->time_step = time_step;
   wt->win = win;
 
@@ -484,6 +496,8 @@ wmTimer *WM_event_timer_add(wmWindowManager *wm,
   return wt;
 }
 ```
+
+> **5.1.1 update:** The function now asserts `ISTIMER(event_type)`, allocates via `MEM_new_zeroed`, and initializes `time_last`, `time_next`, and `time_start` from `BLI_time_now_seconds()`. The previous simplified excerpt omitted these timing-state fields.
 
 And the timer-processing path turns them into work or events:
 
@@ -502,11 +516,16 @@ else if (wmWindow *win = wt.win) {
   wm_event_init_from_window(win, &event);
 
   event.type = wt.event_type;
+  event.val = KM_NOTHING;          /* 5.1.1: explicitly set val */
+  event.keymodifier = EVENT_NONE;  /* 5.1.1: explicitly cleared */
+  event.flag = eWM_EventFlag(0);   /* 5.1.1: explicitly cleared */
   event.custom = EVT_DATA_TIMER;
   event.customdata = &wt;
   WM_event_add(win, &event);
 }
 ```
+
+> **5.1.1 update:** Timer-derived events now explicitly set `val = KM_NOTHING`, `keymodifier = EVENT_NONE`, and `flag = eWM_EventFlag(0)` before queuing.
 
 So timer events are not an afterthought - they are deeply integrated into the same event infrastructure.
 
@@ -523,17 +542,32 @@ This is the top-level OS-event polling function.
 ```cpp
 void wm_window_events_process(const bContext *C)
 {
+  BLI_assert(BLI_thread_is_main());
+  GPU_render_begin();
+
   bool has_event = g_system->processEvents(false); /* `false` is no wait. */
 
   if (has_event) {
     g_system->dispatchEvents();
   }
 
-  int sleep_us = has_event ? 0 : 5000;
+  /* When there is no event, sleep 5 milliseconds not to use too much CPU when idle. */
+  const int sleep_us_default = 5000;
+  int sleep_us = has_event ? 0 : sleep_us_default;
   has_event |= wm_window_timers_process(C, &sleep_us);
-  ...
+#ifdef WITH_XR_OPENXR
+  /* XR events don't use the regular window queues. */
+  has_event |= wm_xr_events_handle(CTX_wm_manager(C));
+#endif
+  GPU_render_end();
+
+  if ((has_event == false) && (sleep_us != 0) && !(G.f & G_FLAG_EVENT_SIMULATE)) {
+    BLI_time_sleep_precise_us(sleep_us);
+  }
 }
 ```
+
+> **5.1.1 update:** The function now opens with `BLI_assert(BLI_thread_is_main())` and `GPU_render_begin()`, the sleep duration variable is named `sleep_us_default`, XR events are processed via `wm_xr_events_handle()` inside `#ifdef WITH_XR_OPENXR`, and the sleep itself is deferred to after `GPU_render_end()` with an additional `G_FLAG_EVENT_SIMULATE` guard.
 
 This function:
 

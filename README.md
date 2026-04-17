@@ -4,6 +4,8 @@ A small collection of **source-backed notes** for understanding how Blender star
 
 These documents are written to provide some internals subjects of Blender from  source codes perspective and focus on **entry points, bootstrapping, context, events, notifiers, and the Window Manager**.
 
+> **Note:** All information in these documents is the result of **static analysis of the Blender source code for release 5.1.1**. Code excerpts, function signatures, struct definitions, and behavioral descriptions reflect the state of the source tree at that release. Findings may not apply to earlier or later versions without verification.
+
 ---
 
 ## 📚 Document Index
@@ -11,7 +13,7 @@ These documents are written to provide some internals subjects of Blender from  
 | Document                                                   | Focus                 | Summary                                                                                                                                |
 | ---------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | [`Blender_App_Project.md`](./Blender_App_Project.md)       | Top-level build graph | Reviews the root `CMakeLists.txt`, project structure, and how the final `blender` target is assembled.                                 |
-| [`Blender_Bootstrapping.md`](./Blender_Bootstrapping.md)    | Application startup   | Follows Blender startup from `main()` / `wWinMain()` into `WM_init()` and `WM_main()`, including CLI parsing and background mode.      |
+| [`Blender_Bootstrapping.md`](./Blender_Bootstrapping.md)   | Application startup   | Follows Blender startup from `main()` / `wWinMain()` into `WM_init()` and `WM_main()`, including CLI parsing and background mode.      |
 | [`Blender_Context.md`](./Blender_Context.md)               | `bContext`            | Explains what `bContext` stores, where it is created, how it is populated, and where it is used.                                       |
 | [`Blender_Operator.md`](./Blender_Operator.md)             | Operator system       | Explains what Blender Operators are, their roles, use cases, lifecycle, and how Blender uses them for commands, tools, and automation. |
 | [`Blender_Window_Manager.md`](./Blender_Window_Manager.md) | WM subsystem          | Covers the role of the Window Manager, its lifecycle, event dispatch, operators, jobs, and runtime services.                           |

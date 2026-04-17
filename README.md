@@ -2,7 +2,7 @@
 
 A small collection of **source-backed notes** for understanding how Blender starts up, builds, and routes runtime state through the window-manager stack.
 
-These documents are written to provide some internals subjects of Blender from  source codes perspective and focus on **entry points, bootstrapping, context, events, notifiers, the Window Manager, and the Blender Kernel data/evaluation layer**.
+These documents are written to provide some internals subjects of Blender from  source codes perspective and focus on **entry points, bootstrapping, context, events, notifiers, the Window Manager, the Blender Kernel data/evaluation layer, and the DNA data-definition layer**.
 
 > **Note:** All information in these documents is the result of **static analysis of the Blender source code for release 5.1.1**. Code excerpts, function signatures, struct definitions, and behavioral descriptions reflect the state of the source tree at that release. Findings may not apply to earlier or later versions without verification.
 
@@ -19,8 +19,7 @@ These documents are written to provide some internals subjects of Blender from  
 | [`Blender_Window_Manager.md`](./Blender_Window_Manager.md) | WM subsystem          | Covers the role of the Window Manager, its lifecycle, event dispatch, operators, jobs, and runtime services.                                                                                            |
 | [`Blender_Events.md`](./Blender_Events.md)                 | Event system          | Traces how OS/GHOST input becomes `wmEvent` queue data and how events are processed in `WM_main()`.                                                                                                     |
 | [`Blender_Notifiers.md`](./Blender_Notifiers.md)           | Notifier system       | Explains how change notifications are queued and dispatched to screens, areas, and regions for refresh/update.                                                                                          |
-| [`Blender_Kernel (BKE).md`](<./Blender_Kernel (BKE).md>)   | Blender Kernel (BKE)  | High-level introduction to BKE: the ID system, `Main` database, `IDTypeInfo` vtable, Object evaluation pipeline, modifier stack, `MeshRuntime`, `GeometrySet`, callback system, and library management. |
-
+| [`Blender_Kernel (BKE).md`](<./Blender_Kernel (BKE).md>)   | Blender Kernel (BKE)  | High-level introduction to BKE: the ID system, `Main` database, `IDTypeInfo` vtable, Object evaluation pipeline, modifier stack, `MeshRuntime`, `GeometrySet`, callback system, and library management. |  | [`Blender_DNA.md`](./Blender_DNA.md) | DNA / data definition | Explains the DNA data-definition layer: how `makesdna` generates the SDNA blob, the `SDNA` runtime struct, the `ID` header, design constraints, and the forward/backward-compatible versioning mechanism. |
 ---
 
 ## 🧭 Suggested Reading Order
@@ -35,8 +34,9 @@ If you are new to Blender internals, read the notes in this order:
 6. [`Blender_Events.md`](./Blender_Events.md)
 7. [`Blender_Notifiers.md`](./Blender_Notifiers.md)
 8. [`Blender_Kernel (BKE).md`](<./Blender_Kernel (BKE).md>)
+9. [`Blender_DNA.md`](./Blender_DNA.md)
 
-This path moves from **build/setup** → **startup flow** → **runtime context** → **operators and commands** → **WM loop and event/update systems** → **core data and evaluation layer**.
+This path moves from **build/setup** → **startup flow** → **runtime context** → **operators and commands** → **WM loop and event/update systems** → **core data and evaluation layer** → **DNA data-definition and file format schema**.
 
 ---
 
@@ -49,8 +49,8 @@ These notes mainly cross-reference code from the local Blender source tree:
 - `source/blender/blenkernel/`
 - `source/blender/windowmanager/`
 - `source/blender/editors/screen/`
-- `source/blender/blenkernel/`
 - `source/blender/makesdna/`
+- `source/blender/blenloader/`
 - `tests/`
 
 ---

@@ -47,10 +47,6 @@
 - [4.8 Tests and temporary contexts](#48-tests-and-temporary-contexts)
   - [Representative test files](#representative-test-files)
 - [5) Short Answers](#5-short-answers)
-  - [What is Blender Context?](#what-is-blender-context)
-  - [Where is it first created?](#where-is-it-first-created)
-  - [Which functions update it?](#which-functions-update-it)
-  - [Where is `bContext` required?](#where-is-bcontext-required)
 - [6) Source-level conclusion](#6-source-level-conclusion)
 
 ---
@@ -645,19 +641,19 @@ Temporary test contexts are also created explicitly.
 
 ## 5) Short Answers
 
-### What is Blender Context?
+**What is Blender Context?**
 
 - It is Blender's runtime **`bContext`** object.
 - It stores current UI state (`window`, `screen`, `area`, `region`, `workspace`) and current data state (`Main`, `Scene`, Python context).
 - Main files: `source/blender/blenkernel/BKE_context.hh` and `source/blender/blenkernel/intern/context.cc`.
 
-### Where is it first created?
+**Where is it first created?**
 
 - **Creation function:** `CTX_create()` in `source/blender/blenkernel/intern/context.cc`
 - **First global call:** `C = CTX_create();` in `source/creator/creator.cc`
 - **Initial global population:** via `WM_init()` / `wm_homefile_read_ex()` and then `CTX_data_scene_set`, `CTX_data_main_set`, `CTX_wm_manager_set` in `source/blender/blenkernel/intern/blendfile.cc`
 
-### Which functions update it?
+**Which functions update it?**
 
 - `CTX_wm_manager_set`
 - `CTX_wm_window_set`
@@ -672,7 +668,7 @@ Temporary test contexts are also created explicitly.
 - `CTX_py_init_set`
 - `CTX_py_state_push` / `CTX_py_state_pop`
 
-### Where is `bContext` required?
+**Where is `bContext` required?**
 
 - Operator execution and polling
 - Window-manager event dispatch and UI refresh

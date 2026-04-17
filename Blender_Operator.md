@@ -30,10 +30,6 @@
   - [7.1 Operator lifecycle in Blender](#71-operator-lifecycle-in-blender)
   - [7.2 Invocation routes and hand-off to subsystems](#72-invocation-routes-and-hand-off-to-subsystems)
 - [8) Short Answers](#8-short-answers)
-  - [What is a Blender Operator?](#what-is-a-blender-operator)
-  - [What is it used for?](#what-is-it-used-for)
-  - [What roles does it play in Blender?](#what-roles-does-it-play-in-blender)
-  - [How does Blender use operators to achieve tasks?](#how-does-blender-use-operators-to-achieve-tasks)
 - [9) Source-level conclusion](#9-source-level-conclusion)
 
 ---
@@ -638,11 +634,11 @@ flowchart LR
 
 ## 8) Short Answers
 
-### What is a Blender Operator?
+**What is a Blender Operator?**
 
 A Blender Operator is the **standard command object** for actions in Blender. It wraps a task in a consistent interface built around `poll`, `invoke`, `exec`, `modal`, RNA properties, and UI metadata.
 
-### What is it used for?
+**What is it used for?**
 
 It is used for **almost every user-triggered or script-triggered action**, including:
 
@@ -656,7 +652,7 @@ It is used for **almost every user-triggered or script-triggered action**, inclu
 - Python automation with `bpy.ops`,
 - gizmo and drag-drop interactions.
 
-### What roles does it play in Blender?
+**What roles does it play in Blender?**
 
 The operator system acts as:
 
@@ -667,7 +663,7 @@ The operator system acts as:
 5. an **undo/redo integration point**,
 6. and a **bridge between UI, events, and deeper subsystems**.
 
-### How does Blender use operators to achieve tasks?
+**How does Blender use operators to achieve tasks?**
 
 Blender typically:
 

@@ -41,17 +41,17 @@
 
 ## 1) Window Manager source-file map
 
-| File | Important symbols | Role in WM |
-| --- | --- | --- |
-| `source/blender/windowmanager/WM_api.hh` | `WM_init`, `WM_check`, `WM_main`, `WM_exit`, `WM_event_add_notifier`, `WM_operator_name_call` | Public C/C++ API of the Window Manager |
-| `source/blender/windowmanager/WM_types.hh` | `wm::OpCallContext`, operator flags | Shared WM-facing types for operator execution |
-| `source/blender/windowmanager/wm_event_system.hh` | `wmEventHandler`, `eWM_EventHandlerType`, `wm_event_do_handlers()` | Internal event-handler definitions |
-| `source/blender/windowmanager/intern/wm.cc` | `WM_check`, `WM_main` | Runtime setup checks and the main event loop |
-| `source/blender/windowmanager/intern/wm_init_exit.cc` | `WM_init`, `WM_exit_ex`, `WM_exit` | Startup and shutdown of WM |
+| File                                                     | Important symbols                                                                                      | Role in WM                                          |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| `source/blender/windowmanager/WM_api.hh`                 | `WM_init`, `WM_check`, `WM_main`, `WM_exit`, `WM_event_add_notifier`, `WM_operator_name_call`          | Public C/C++ API of the Window Manager              |
+| `source/blender/windowmanager/WM_types.hh`               | `wm::OpCallContext`, operator flags                                                                    | Shared WM-facing types for operator execution       |
+| `source/blender/windowmanager/wm_event_system.hh`        | `wmEventHandler`, `eWM_EventHandlerType`, `wm_event_do_handlers()`                                     | Internal event-handler definitions                  |
+| `source/blender/windowmanager/intern/wm.cc`              | `WM_check`, `WM_main`                                                                                  | Runtime setup checks and the main event loop        |
+| `source/blender/windowmanager/intern/wm_init_exit.cc`    | `WM_init`, `WM_exit_ex`, `WM_exit`                                                                     | Startup and shutdown of WM                          |
 | `source/blender/windowmanager/intern/wm_event_system.cc` | `wm_handlers_do_intern`, `wm_event_do_handlers`, `WM_event_add_modal_handler`, `WM_event_add_notifier` | Core event dispatch, modal handlers, notifier queue |
-| `source/blender/windowmanager/intern/wm_window.cc` | `wm_window_events_process` | Pulls platform/GHOST events into Blender windows |
-| `source/blender/windowmanager/intern/wm_jobs.cc` | `WM_jobs_get`, `WM_jobs_start`, `WM_jobs_kill_all` | Job system for async/background tasks |
-| `source/blender/makesdna/DNA_windowmanager_types.h` | `wmWindowManager`, `wmWindow` | Saved/runtime WM data structures |
+| `source/blender/windowmanager/intern/wm_window.cc`       | `wm_window_events_process`                                                                             | Pulls platform/GHOST events into Blender windows    |
+| `source/blender/windowmanager/intern/wm_jobs.cc`         | `WM_jobs_get`, `WM_jobs_start`, `WM_jobs_kill_all`                                                     | Job system for async/background tasks               |
+| `source/blender/makesdna/DNA_windowmanager_types.h`      | `wmWindowManager`, `wmWindow`                                                                          | Saved/runtime WM data structures                    |
 
 ---
 
@@ -70,15 +70,34 @@ The saved/runtime WM objects are defined in `source/blender/makesdna/DNA_windowm
 
 A representative excerpt is:
 
-```c
-typedef struct wmWindowManager {
+```cpp
+struct wmWindowManager {
   ID id;
-  ListBase windows;
-  short init_flag;
+
+  ListBaseT<wmWindow> windows;
+
+  /** Set on file read. */
+  uint8_t init_flag;
+  /** Indicator whether data was saved. */
+  short file_saved;
+  /** Operator stack depth to avoid nested undo pushes. */
   short op_undo_depth;
-  struct wmWindowManagerRuntimeHandle *runtime;
-} wmWindowManager;
+
+  /** Set after selection to notify outliner to sync. */
+  short outliner_sync_select_dirty;
+
+  int extensions_updates;  /* 5.1.1: new */
+  int extensions_blocked;  /* 5.1.1: new */
+
+  struct wmTimer *autosavetimer;
+
+  wmXrData xr;  /* 5.1.1: XR data moved into struct */
+
+  bke::WindowManagerRuntime *runtime;
+};
 ```
+
+> **5.1.1 update:** The struct is now a C++ struct (not a C `typedef struct`), uses `ListBaseT<wmWindow>`, `uint8_t init_flag` (was `short`), `bke::WindowManagerRuntime *runtime` (was `wmWindowManagerRuntimeHandle *`), and gained many new fields including `file_saved`, `outliner_sync_select_dirty`, `extensions_updates`, `extensions_blocked`, `autosavetimer`, and embedded `xr` data.
 
 This tells us that WM is the top-level owner of the current Blender windows and its runtime-only state.
 
@@ -193,24 +212,27 @@ Main roles here:
 ```cpp
 void WM_main(bContext *C)
 {
-  wmWindowManager *wm = CTX_wm_manager(C);
-
-  if (wm == nullptr) {
-    return;
-  }
-
+  /* Single refresh before handling events.
+   * This ensures we don't run operators before the depsgraph has been evaluated. */
   wm_event_do_refresh_wm_and_depsgraph(C);
 
   while (true) {
+    /* Get events from ghost, handle window events, add to window queues. */
     wm_window_events_process(C);
 
+    /* Per window, all events to the window, screen, area and region handlers. */
     wm_event_do_handlers(C);
+
+    /* Events have left notes about changes, we handle and cache it. */
     wm_event_do_notifiers(C);
 
+    /* Execute cached changes draw. */
     wm_draw_update(C);
   }
 }
 ```
+
+> **5.1.1 update:** The `wmWindowManager *wm` null-check / early-return at the start of `WM_main()` was removed. The function now goes directly to `wm_event_do_refresh_wm_and_depsgraph(C)` before the loop.
 
 This is the core of Blender's interactive execution model.
 
@@ -284,25 +306,28 @@ And the common base handler is:
 
 ```cpp
 struct wmEventHandler {
-  wmEventHandler *next;
-  wmEventHandler *prev;
+  wmEventHandler *next, *prev;
+
   eWM_EventHandlerType type;
-  int8_t flag;
-  wmEventHandlerPollFn poll;
+  eWM_EventHandlerFlag flag;  /* 5.1.1: typed flag, was int8_t */
+
+  EventHandlerPoll poll;      /* 5.1.1: renamed from wmEventHandlerPollFn */
 };
 ```
+
+> **5.1.1 update:** The `flag` field is now typed as `eWM_EventHandlerFlag` and the poll function pointer type is `EventHandlerPoll` (was `wmEventHandlerPollFn`).
 
 So WM models event processing through a **polymorphic handler list**. Each node says what kind of handler it is, whether it is blocking, and whether it should run in the current context.
 
 #### What each handler type is used for
 
-| Handler type | Purpose |
-| --- | --- |
-| `WM_HANDLER_TYPE_KEYMAP` | Match input against keymaps and launch mapped operators |
-| `WM_HANDLER_TYPE_UI` | Route events into UI widgets, menus, popups, buttons |
-| `WM_HANDLER_TYPE_OP` | Run modal/file-select/operator handlers |
-| `WM_HANDLER_TYPE_DROPBOX` | Handle drag-and-drop targets |
-| `WM_HANDLER_TYPE_GIZMO` | Route events to transform/manipulator gizmos |
+| Handler type              | Purpose                                                 |
+| ------------------------- | ------------------------------------------------------- |
+| `WM_HANDLER_TYPE_KEYMAP`  | Match input against keymaps and launch mapped operators |
+| `WM_HANDLER_TYPE_UI`      | Route events into UI widgets, menus, popups, buttons    |
+| `WM_HANDLER_TYPE_OP`      | Run modal/file-select/operator handlers                 |
+| `WM_HANDLER_TYPE_DROPBOX` | Handle drag-and-drop targets                            |
+| `WM_HANDLER_TYPE_GIZMO`   | Route events to transform/manipulator gizmos            |
 
 ### 4.3 Core dispatch in `wm_handlers_do_intern()`
 
@@ -420,10 +445,10 @@ That separation is a big part of why Blender's UI remains structured instead of 
 
 Notifiers are closely related to the WM message bus discussed later in section **5.6**, but they are not identical:
 
-| Mechanism | Main role | Granularity |
-| --- | --- | --- |
-| `wmNotifier` | Broad refresh/update signaling | coarse |
-| `wmMsgBus` | Observer-style publish/subscribe callbacks | fine-grained |
+| Mechanism    | Main role                                  | Granularity  |
+| ------------ | ------------------------------------------ | ------------ |
+| `wmNotifier` | Broad refresh/update signaling             | coarse       |
+| `wmMsgBus`   | Observer-style publish/subscribe callbacks | fine-grained |
 
 A practical rule is: **notifiers tell Blender that some category of state changed, while the message bus lets code subscribe to specific changes.**
 
@@ -438,11 +463,13 @@ The Window Manager is broader than event dispatch alone. `source/blender/windowm
 Representative APIs in `WM_api.hh` include:
 
 ```cpp
-bool WM_operator_name_call_ptr(...);
-bool WM_operator_name_call(...);
-bool WM_operator_name_call_with_properties(...);
-int WM_operator_call_py(...);
+wmOperatorStatus WM_operator_name_call_ptr(...);
+wmOperatorStatus WM_operator_name_call(...);
+wmOperatorStatus WM_operator_name_call_with_properties(...);
+wmOperatorStatus WM_operator_call_py(...);
 ```
+
+> **5.1.1 update:** All operator-call helpers now return `wmOperatorStatus` (was `bool` / `int`).
 
 These helpers give Blender a **uniform path for invoking operators** from:
 
@@ -456,16 +483,24 @@ The execution context is controlled by `wm::OpCallContext` in `source/blender/wi
 
 ```cpp
 enum class OpCallContext : int8_t {
+  /* If there's invoke, call it, otherwise exec. */
   InvokeDefault,
   InvokeRegionWin,
+  InvokeRegionChannels,  /* 5.1.1: new */
+  InvokeRegionPreview,   /* 5.1.1: new */
   InvokeArea,
   InvokeScreen,
+  /* Only call exec. */
   ExecDefault,
   ExecRegionWin,
+  ExecRegionChannels,    /* 5.1.1: new */
+  ExecRegionPreview,     /* 5.1.1: new */
   ExecArea,
   ExecScreen,
 };
 ```
+
+> **5.1.1 addition:** Four new context values were added: `InvokeRegionChannels`, `InvokeRegionPreview`, `ExecRegionChannels`, `ExecRegionPreview`.
 
 This is how WM decides whether an operator should be invoked with full UI context or executed more directly.
 
@@ -522,11 +557,11 @@ This topic fits best in the **Window Manager** document because the message bus 
 
 It is **not the same thing** as either the event queue or the notifier queue:
 
-| System | Main role |
-| --- | --- |
-| `event_queue` | Raw input/runtime events such as mouse, keyboard, and timer events |
-| notifier queue | Broad "something changed" refresh signaling for editors and UI |
-| message bus | Targeted **observer / publish-subscribe** notifications for specific data/RNA changes |
+| System         | Main role                                                                             |
+| -------------- | ------------------------------------------------------------------------------------- |
+| `event_queue`  | Raw input/runtime events such as mouse, keyboard, and timer events                    |
+| notifier queue | Broad "something changed" refresh signaling for editors and UI                        |
+| message bus    | Targeted **observer / publish-subscribe** notifications for specific data/RNA changes |
 
 #### Startup and runtime ownership
 

@@ -106,6 +106,44 @@ struct wmOperatorType {
 };
 ```
 
+> **5.1.1 update:** The struct above is a simplified excerpt. In 5.1.1 `wmOperatorType` has additional members:
+>
+> ```cpp
+> struct wmOperatorType {
+>   struct TypeData { virtual ~TypeData() = default; };  // base for subclassed type-data
+>
+>   const char *name = nullptr;
+>   const char *idname = nullptr;
+>   const char *translation_context = nullptr;   // NEW: for i18n lookup
+>   const char *description = nullptr;
+>   const char *undo_group = nullptr;             // NEW: groups operators for undo
+>
+>   wmOperatorStatus (*exec)(...) = nullptr;
+>   bool (*check)(...) = nullptr;
+>   wmOperatorStatus (*invoke)(...) = nullptr;
+>   void (*cancel)(...) = nullptr;
+>   wmOperatorStatus (*modal)(...) = nullptr;
+>   bool (*poll)(bContext *C) = nullptr;
+>   bool (*poll_property)(...) = nullptr;
+>   void (*ui)(bContext *C, wmOperator *op) = nullptr;
+>   bool (*ui_poll)(wmOperatorType *ot, PointerRNA *ptr) = nullptr;   // NEW: gate for redo panel
+>   std::string (*get_name)(wmOperatorType *ot, PointerRNA *ptr) = nullptr;       // NEW
+>   std::string (*get_description)(bContext *C, wmOperatorType *ot, PointerRNA *ptr) = nullptr; // NEW
+>   bool (*depends_on_cursor)(bContext &C, wmOperatorType &ot, PointerRNA *ptr) = nullptr;      // NEW
+>
+>   StructRNA *srna = nullptr;
+>   IDProperty *last_properties = nullptr;
+>   PropertyRNA *prop = nullptr;
+>   ListBaseT<wmOperatorTypeMacro> macro = {};
+>   wmKeyMap *modalkeymap = nullptr;
+>   bool (*pyop_poll)(bContext *C, wmOperatorType *ot) = nullptr;   // Python-specific poll
+>   std::unique_ptr<TypeData> custom_data;   // NEW: arbitrary type-specific static data
+>   ExtensionRNA rna_ext = {};
+>   int cursor_pending = 0;    // cursor shown while waiting for click (DEPENDS_ON_CURSOR)
+>   short flag = 0;
+> };
+> ```
+
 **File:** `source/blender/makesdna/DNA_windowmanager_types.h`
 
 ```cpp
@@ -124,6 +162,30 @@ struct wmOperator {
   struct wmOperator *opm = nullptr;
 };
 ```
+
+> **5.1.1 update:** The struct has additional fields in 5.1.1:
+>
+> ```cpp
+> struct wmOperator {
+>   struct wmOperator *next = nullptr, *prev = nullptr;  // NEW: linked-list pointers
+>
+>   char idname[64] = "";
+>   IDProperty *properties = nullptr;
+>
+>   struct wmOperatorType *type = nullptr;
+>   void *customdata = nullptr;
+>   void *py_instance = nullptr;
+>
+>   struct PointerRNA *ptr = nullptr;
+>   struct ReportList *reports = nullptr;
+>
+>   ListBaseT<wmOperator> macro = {nullptr, nullptr};
+>   struct wmOperator *opm = nullptr;
+>   ui::Layout *layout = nullptr;   // NEW: runtime layout pointer for drawing
+>   short flag = 0;
+>   char _pad[6] = {};
+> };
+> ```
 
 This shows the essential split:
 
@@ -194,6 +256,42 @@ ED_operatortypes_mask();
 ED_operatortypes_io();
 ```
 
+> **5.1.1 update:** The listing above is incomplete. In 5.1.1 the full call sequence (abbreviated) is:
+>
+> ```cpp
+> ED_operatortypes_userpref();
+> ED_operatortypes_workspace();
+> ED_operatortypes_scene();
+> ED_operatortypes_screen();
+> ED_operatortypes_anim();
+> ED_operatortypes_animchannels();
+> asset::operatortypes_asset();            // NEW namespace-qualified call
+> ED_operatortypes_gpencil_legacy();
+> ED_operatortypes_grease_pencil();
+> object::operatortypes_object();          // NEW namespace-qualified call
+> ED_operatortypes_lattice();
+> ED_operatortypes_mesh();
+> geometry::operatortypes_geometry();      // NEW
+> sculpt_paint::operatortypes_sculpt();    // NEW namespace-qualified call
+> ED_operatortypes_sculpt_curves();        // NEW
+> ED_operatortypes_uvedit();
+> ED_operatortypes_paint();
+> ED_operatortypes_physics();
+> ED_operatortypes_curve();
+> curves::operatortypes_curves();          // NEW
+> pointcloud::operatortypes_pointcloud();  // NEW
+> ED_operatortypes_armature();
+> ED_operatortypes_marker();
+> ED_operatortypes_metaball();
+> ED_operatortypes_sound();
+> ED_operatortypes_render();
+> ED_operatortypes_mask();
+> ED_operatortypes_io();
+> ED_operatortypes_edutils();              // NEW
+> ui::ED_operatortypes_view2d();           // NEW namespace-qualified call
+> ui::operatortypes_ui();                  // NEW namespace-qualified call
+> ```
+
 From that registration pattern, the major operator use-case families are:
 
 | Use-case family                            | What operators do in practice                                       | Representative registrations / files                                                                                   |
@@ -254,6 +352,8 @@ void wm_operatortypes_register()
   WM_operatortype_append(GIZMOGROUP_OT_gizmo_tweak);
 }
 ```
+
+> **5.1.1 update:** The excerpt above is abbreviated; 5.1.1 registers many more operators. The full function includes (in order): `WM_OT_window_close`, `WM_OT_window_new`, `WM_OT_window_new_main`, `WM_OT_read_history`, `WM_OT_read_homefile`, `WM_OT_read_factory_settings`, `WM_OT_save_homefile`, `WM_OT_save_userpref`, `WM_OT_read_userpref`, `WM_OT_read_factory_userpref`, `WM_OT_window_fullscreen_toggle`, `WM_OT_quit_blender`, `WM_OT_open_mainfile`, `WM_OT_revert_mainfile`, `WM_OT_link`, `WM_OT_append`, `WM_OT_id_linked_relocate`, `WM_OT_lib_relocate`, `WM_OT_lib_reload`, `WM_OT_recover_last_session`, `WM_OT_recover_auto_save`, `WM_OT_save_as_mainfile`, `WM_OT_save_mainfile`, `WM_OT_clear_recent_files`, `WM_OT_redraw_timer`, `WM_OT_memory_statistics`, `WM_OT_debug_menu`, `WM_OT_operator_defaults`, `WM_OT_splash`, `WM_OT_splash_about`, `WM_OT_search_menu`, `WM_OT_search_operator`, `WM_OT_search_single_menu`, `WM_OT_call_menu`, `WM_OT_call_menu_pie`, `WM_OT_call_panel`, `WM_OT_call_asset_shelf_popover`, `WM_OT_radial_control`, `WM_OT_stereo3d_set`, `WM_OT_console_toggle` (WIN32 only), `WM_OT_previews_ensure`, `WM_OT_previews_clear`, `WM_OT_doc_view_manual_ui_context`, `WM_OT_set_working_color_space`, `wm_xr_operatortypes_register()` (XR), and finally `GIZMOGROUP_OT_gizmo_select` / `GIZMOGROUP_OT_gizmo_tweak`.
 
 The registration mechanism itself is in `wm_operator_type.cc`.
 
@@ -374,6 +474,30 @@ bool WM_operator_poll(bContext *C, wmOperatorType *ot)
 }
 ```
 
+> **5.1.1 update:** In 5.1.1 the function first iterates macro sub-operators before reaching `pyop_poll`/`poll`:
+>
+> ```cpp
+> bool WM_operator_poll(bContext *C, wmOperatorType *ot)
+> {
+>   for (wmOperatorTypeMacro &otmacro : ot->macro) {
+>     wmOperatorType *ot_macro = WM_operatortype_find(otmacro.idname, false);
+>     if (!WM_operator_poll(C, ot_macro)) {
+>       return false;
+>     }
+>   }
+>   /* Python needs operator type, so we added exception for it. */
+>   if (ot->pyop_poll) {
+>     return ot->pyop_poll(C, ot);
+>   }
+>   if (ot->poll) {
+>     return ot->poll(C);
+>   }
+>   return true;
+> }
+> ```
+>
+> This means a macro operator fails poll as soon as any of its sub-operator types fails poll.
+
 So Blender uses operators as **context-sensitive commands** rather than blindly calling tools.
 
 ### 5.3 Undo, redo, reports, and redraw
@@ -392,6 +516,13 @@ OPTYPE_MACRO = (1 << 3),
 ...
 OPTYPE_DEPENDS_ON_CURSOR = (1 << 11),
 ```
+
+> **5.1.1 addition:** Two new flags exist in 5.1.1:
+>
+> ```cpp
+> OPTYPE_MODAL_PRIORITY = (1 << 12),  // Handle events before modal operators without this flag
+> OPTYPE_NODE_TOOL     = (1 << 13),  // Operator registered from a local/asset node group
+> ```
 
 These flags give operators important application roles:
 

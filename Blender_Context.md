@@ -57,9 +57,9 @@ In Blender source code, **Blender Context** is the runtime object **`bContext`**
 
 ### Main definition files
 
-| Purpose | File |
-| --- | --- |
-| Public API / declarations | `source/blender/blenkernel/BKE_context.hh` |
+| Purpose                                       | File                                          |
+| --------------------------------------------- | --------------------------------------------- |
+| Public API / declarations                     | `source/blender/blenkernel/BKE_context.hh`    |
 | Private implementation / actual struct layout | `source/blender/blenkernel/intern/context.cc` |
 
 ### Verified source excerpts
@@ -99,6 +99,45 @@ struct bContext {
   } data;
 };
 ```
+
+> **5.1.1 update:** The struct excerpt above is a simplified/historical version. In 5.1.1 the actual struct has additional fields in both sub-structs:
+>
+> ```cpp
+> struct bContext {
+>   int thread;
+>
+>   /* windowmanager context */
+>   struct {
+>     wmWindowManager *manager;
+>     wmWindow *window;
+>     WorkSpace *workspace;
+>     bScreen *screen;
+>     ScrArea *area;
+>     ARegion *region;
+>     ARegion *region_popup;
+>     wmGizmoGroup *gizmo_group;
+>     const bContextStore *store;
+>     /* Operator poll message (static string, not allocated). */
+>     const char *operator_poll_msg;
+>     bContextPollMsgDyn_Params operator_poll_msg_dyn_params;
+>   } wm;
+>
+>   /* data context */
+>   struct {
+>     Main *main;
+>     Scene *scene;
+>     int recursion;
+>     bool py_init;
+>     void *py_context;
+>     void *py_context_orig;
+>     CTX_LogFlag log_flag;
+>     const bool *rna_disallow_writes;
+>   } data;
+> };
+> ```
+>
+> New `wm` additions: `region_popup`, `gizmo_group`, `store` (all previously present but missing from the excerpt), plus `operator_poll_msg` and `operator_poll_msg_dyn_params` for per-context poll-failure messages.
+> New `data` additions: `recursion` (anti-infinite-loop depth counter), `py_context_orig` (original Python context before override), `log_flag` (`CTX_LogFlag` enum for controlling access logging and `HideMissing` suppression), `rna_disallow_writes` (optional flag pointer to disallow RNA writes).
 
 ### What it stores
 
@@ -157,12 +196,25 @@ The key resolver is `ctx_data_get()` in `source/blender/blenkernel/intern/contex
 **File:** `source/blender/blenkernel/intern/context.cc`
 
 ```cpp
-if (CTX_py_dict_get(C)) { ... }
-if (done != 1 && recursion < 1 && C->wm.store) { ... }
-if (done != 1 && recursion < 2 && (region = CTX_wm_region(C))) { ... }
-if (done != 1 && recursion < 3 && (area = CTX_wm_area(C))) { ... }
-if (done != 1 && recursion < 4 && (screen = CTX_wm_screen(C))) { ... }
+#ifdef WITH_PYTHON
+  if (CTX_py_dict_get(C)) {
+    if (BPY_context_member_get(C, member, result)) {
+      return CTX_RESULT_OK;
+    }
+  }
+#endif
+  if (done != 1 && recursion < 1 && C->wm.store) {
+    C->data.recursion = 1;
+    if (const PointerRNA *ptr = CTX_store_ptr_lookup(C->wm.store, member, nullptr)) { ... }
+    else if (std::optional<StringRefNull> str = CTX_store_string_lookup(C->wm.store, member)) { ... }
+    else if (std::optional<int64_t> int_value = CTX_store_int_lookup(C->wm.store, member)) { ... }
+  }
+  if (done != 1 && recursion < 2 && (region = CTX_wm_region(C))) { ... }
+  if (done != 1 && recursion < 3 && (area = CTX_wm_area(C))) { ... }
+  if (done != 1 && recursion < 4 && (screen = CTX_wm_screen(C))) { ... }
 ```
+
+> **5.1.1 update:** The store check now uses typed lookup helpers (`CTX_store_ptr_lookup`, `CTX_store_string_lookup`, `CTX_store_int_lookup`) to resolve `PointerRNA`, `StringRef`, or `int64_t` values stored in the context. The resolution order is unchanged. Non-main-thread calls return `CTX_RESULT_MEMBER_NOT_FOUND` immediately (guard added after the Python block).
 
 This shows that Blender resolves context values in this order:
 
@@ -192,11 +244,11 @@ bContext *CTX_create()
 
 ### Creation helper functions
 
-| Function | File | Role |
-| --- | --- | --- |
-| `CTX_create()` | `source/blender/blenkernel/intern/context.cc` | Allocate a zeroed `bContext` |
-| `CTX_copy()` | `source/blender/blenkernel/intern/context.cc` | Duplicate an existing context |
-| `CTX_free()` | `source/blender/blenkernel/intern/context.cc` | Free a context |
+| Function       | File                                          | Role                          |
+| -------------- | --------------------------------------------- | ----------------------------- |
+| `CTX_create()` | `source/blender/blenkernel/intern/context.cc` | Allocate a zeroed `bContext`  |
+| `CTX_copy()`   | `source/blender/blenkernel/intern/context.cc` | Duplicate an existing context |
+| `CTX_free()`   | `source/blender/blenkernel/intern/context.cc` | Free a context                |
 
 ## 2.2 First global creation during Blender startup
 
@@ -336,20 +388,20 @@ The main update/setter functions are implemented in:
 
 ### Core update functions
 
-| Function | File | What it updates |
-| --- | --- | --- |
-| `CTX_store_set()` | `source/blender/blenkernel/intern/context.cc` | Set temporary stored overrides |
-| `CTX_wm_manager_set()` | `source/blender/blenkernel/intern/context.cc` | Set `wmWindowManager` and clear nested UI state |
-| `CTX_wm_window_set()` | `source/blender/blenkernel/intern/context.cc` | Set active window and sync `scene/workspace/screen` |
-| `CTX_wm_screen_set()` | `source/blender/blenkernel/intern/context.cc` | Set active screen |
-| `CTX_wm_area_set()` | `source/blender/blenkernel/intern/context.cc` | Set active area |
-| `CTX_wm_region_set()` | `source/blender/blenkernel/intern/context.cc` | Set active region |
-| `CTX_wm_region_popup_set()` | `source/blender/blenkernel/intern/context.cc` | Set popup region |
-| `CTX_wm_gizmo_group_set()` | `source/blender/blenkernel/intern/context.cc` | Set active gizmo group |
-| `CTX_data_main_set()` | `source/blender/blenkernel/intern/context.cc` | Set `Main *` |
-| `CTX_data_scene_set()` | `source/blender/blenkernel/intern/context.cc` | Set `Scene *` |
-| `CTX_py_init_set()` | `source/blender/blenkernel/intern/context.cc` | Mark Python as initialized |
-| `CTX_py_state_push()` / `CTX_py_state_pop()` | `source/blender/blenkernel/intern/context.cc` | Push/pop Python context override state |
+| Function                                     | File                                          | What it updates                                     |
+| -------------------------------------------- | --------------------------------------------- | --------------------------------------------------- |
+| `CTX_store_set()`                            | `source/blender/blenkernel/intern/context.cc` | Set temporary stored overrides                      |
+| `CTX_wm_manager_set()`                       | `source/blender/blenkernel/intern/context.cc` | Set `wmWindowManager` and clear nested UI state     |
+| `CTX_wm_window_set()`                        | `source/blender/blenkernel/intern/context.cc` | Set active window and sync `scene/workspace/screen` |
+| `CTX_wm_screen_set()`                        | `source/blender/blenkernel/intern/context.cc` | Set active screen                                   |
+| `CTX_wm_area_set()`                          | `source/blender/blenkernel/intern/context.cc` | Set active area                                     |
+| `CTX_wm_region_set()`                        | `source/blender/blenkernel/intern/context.cc` | Set active region                                   |
+| `CTX_wm_region_popup_set()`                  | `source/blender/blenkernel/intern/context.cc` | Set popup region                                    |
+| `CTX_wm_gizmo_group_set()`                   | `source/blender/blenkernel/intern/context.cc` | Set active gizmo group                              |
+| `CTX_data_main_set()`                        | `source/blender/blenkernel/intern/context.cc` | Set `Main *`                                        |
+| `CTX_data_scene_set()`                       | `source/blender/blenkernel/intern/context.cc` | Set `Scene *`                                       |
+| `CTX_py_init_set()`                          | `source/blender/blenkernel/intern/context.cc` | Mark Python as initialized                          |
+| `CTX_py_state_push()` / `CTX_py_state_pop()` | `source/blender/blenkernel/intern/context.cc` | Push/pop Python context override state              |
 
 ### Verified setter excerpts
 
@@ -399,14 +451,14 @@ void CTX_data_scene_set(bContext *C, Scene *scene)
 
 ### Common places where these update functions are called
 
-| File | Example usage |
-| --- | --- |
+| File                                                     | Example usage                                               |
+| -------------------------------------------------------- | ----------------------------------------------------------- |
 | `source/blender/windowmanager/intern/wm_event_system.cc` | `CTX_wm_window_set(C, &win);`, `CTX_wm_area_set(C, &area);` |
-| `source/blender/windowmanager/intern/wm_window.cc` | Switch window context during window operations |
-| `source/blender/windowmanager/intern/wm_files.cc` | Set/clear current window during file read/write |
-| `source/blender/blenkernel/intern/blendfile.cc` | Set `scene`, `main`, `window manager` after reading data |
-| `source/blender/python/intern/bpy_rna_context.cc` | Override / restore `window`, `screen`, `area`, `region` |
-| `source/blender/editors/render/render_update.cc` | Build temporary render context with `CTX_*_set()` |
+| `source/blender/windowmanager/intern/wm_window.cc`       | Switch window context during window operations              |
+| `source/blender/windowmanager/intern/wm_files.cc`        | Set/clear current window during file read/write             |
+| `source/blender/blenkernel/intern/blendfile.cc`          | Set `scene`, `main`, `window manager` after reading data    |
+| `source/blender/python/intern/bpy_rna_context.cc`        | Override / restore `window`, `screen`, `area`, `region`     |
+| `source/blender/editors/render/render_update.cc`         | Build temporary render context with `CTX_*_set()`           |
 
 ---
 

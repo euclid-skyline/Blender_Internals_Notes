@@ -178,6 +178,8 @@ int main_python_enter(int argc, const char **argv);
 #endif
 ```
 
+> **5.1.1 note:** The `WITH_HEADLESS` build configuration (headless builds without any display server) also enters this same path. See section 4.9.
+
 Then later the file defines:
 
 ```cpp
@@ -250,6 +252,8 @@ G.factory_startup = true;
 G.background = true;
 ```
 
+> **5.1.1 update:** `G.background = true` (and `BKE_sound_force_device("None")`) is now guarded by `#if defined(WITH_PYTHON_MODULE) || defined(WITH_HEADLESS)`. Builds compiled with `WITH_HEADLESS` also always run in background-mode. However, `G.factory_startup = true` is only set for `WITH_PYTHON_MODULE`, not `WITH_HEADLESS`.
+
 So this path is mainly for **headless / scripted / embedded use**, not for the usual windowed Blender session.
 
 **How it is compiled**
@@ -275,6 +279,8 @@ if(WITH_PYTHON_MODULE)
   )
 endif()
 ```
+
+> **5.1.1 note:** A separate `WITH_HEADLESS` CMake option also produces a background-only build (no display server, no GHOST window). The macOS `psn_` argument-patch guard in `creator.cc` now reads `!defined(WITH_PYTHON_MODULE) && !defined(WITH_HEADLESS)`.
 
 This means:
 
@@ -646,6 +652,8 @@ static void background_mode_set()
 }
 ```
 
+> **5.1.1 update:** Background mode is now also forced for `WITH_HEADLESS` builds via `#if defined(WITH_PYTHON_MODULE) || defined(WITH_HEADLESS)` in `creator.cc`. For those paths `main_signal_setup_background()` is **not** called — it is only called from the `else` branch (normal `--background` flag execution).
+
 ### What it is used for
 
 Common use-cases include:
@@ -814,15 +822,35 @@ ED_spacemacros_init();
 #ifdef WITH_PYTHON
   BPY_python_start(C, argc, argv);
   BPY_python_reset(C);
+#else
+  UNUSED_VARS(argc, argv);
 #endif
+
+/* 5.1.1: After Python starts, set the GHOST console window state (GUI only). */
+if (!G.background) {
+  GHOST_ISystem *ghost_system = GHOST_ISystem::getSystem();
+  if (wm_start_with_console) {
+    ghost_system->setConsoleWindowState(GHOST_kConsoleWindowStateShow);
+  }
+  else {
+    ghost_system->setConsoleWindowState(GHOST_kConsoleWindowStateHideForNonConsoleLaunch);
+  }
+}
+
+ED_render_clear_mtex_copybuf();
 ```
 
 Python is started **after** the home file has been read so that key-maps stored in the `wmWindowManager` (which is blend-file data) already exist when add-on key-map registrations run.
+
+> **5.1.1 addition:** After `BPY_python_reset`, GHOST sets the console window visibility state (Windows) and `ED_render_clear_mtex_copybuf()` is called before the history file is read.
 
 **Phase I – History, recent searches, key configuration**
 
 ```cpp
 wm_history_file_read();   /* Loads the recently opened files list. */
+
+/* 5.1.1: Cache last library path from home-file read. */
+STRNCPY(G.filepath_last_library, BKE_main_blendfile_path_from_global());
 
 if (!G.background) {
   ui::string_search::read_recent_searches_file();
@@ -957,29 +985,37 @@ void WM_exit(bContext *C, const int exit_code)
 
 `WM_exit_ex()` performs the actual teardown in the following order:
 
-| Order | Subsystem                    | Notes                                                                                                                       |
-| ----- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 1     | User exit actions (optional) | Saves preferences and recent files if exiting normally from GUI                                                             |
-| 2     | Animation copy buffers       | `ANIM_fcurves_copybuf_free()` and related                                                                                   |
-| 3     | Gizmo type tables            | `wm_gizmomaptypes_free()`, `wm_gizmogrouptype_free()`, `wm_gizmotype_free()`                                                |
-| 4     | UI list types                | `WM_uilisttype_free()`                                                                                                      |
-| 5     | Font system                  | `BLF_exit()`                                                                                                                |
-| 6     | Translation system           | `BLT_lang_free()`                                                                                                           |
-| 7     | Keying set infos             | `animrig::keyingset_infos_exit()`                                                                                           |
-| 8     | Python                       | `BPY_python_end(do_python_exit)` — before `BKE_blender_free` so garbage collection still has the library                    |
-| 9     | File selector menus          | `ED_file_exit()`                                                                                                            |
-| 10    | GPU resources + UI           | `DRW_gpu_context_enable_ex`, `ui::ui_exit()`, `GPU_shader_cache_dir_clear_old()`, `GPU_exit()`, `DRW_gpu_context_destroy()` |
-| 11    | User preferences             | `BKE_blender_userdef_data_free(&U, false)`                                                                                  |
-| 12    | RNA type system              | `RNA_exit()` — after Python so struct Python slots are cleared first                                                        |
-| 13    | GHOST windowing              | `wm_ghost_exit()`                                                                                                           |
-| 14    | bContext                     | `CTX_free(C)`                                                                                                               |
-| 15    | DNA/SDNA                     | `DNA_sdna_current_free()`                                                                                                   |
-| 16    | Thread API                   | `BLI_threadapi_exit()`, `BLI_task_scheduler_exit()`                                                                         |
-| 17    | Sound/FFMPEG                 | `BKE_sound_exit_once()`                                                                                                     |
-| 18    | App directories              | `BKE_appdir_exit()`                                                                                                         |
-| 19    | Atexit callbacks             | `BKE_blender_atexit()`                                                                                                      |
-| 20    | Autosave + temp dir          | `wm_autosave_delete()`, `BKE_tempdir_session_purge()`                                                                       |
-| 21    | Logging                      | `CLG_exit()` — must be last; nothing may log after this                                                                     |
+| Order | Subsystem                             | Notes                                                                                                                                      |
+| ----- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1     | User exit actions (optional)          | Saves quit.blend, kills jobs, exits screens; saves preferences if `do_user_exit_actions`                                                   |
+| 2     | Python add-on disable                 | `bpy.utils._on_exit()` — disables all add-ons before Python shuts down                                                                     |
+| 3     | CLI commands                          | `BKE_blender_cli_command_free_all()` — after add-on unregister, before Python exits                                                        |
+| 4     | Timer / panel / operator / menu types | `BLI_timer_free()`, `WM_paneltype_clear()`, operator/surface/dropbox/menu free                                                             |
+| 5     | Editor exit + misc clipboards         | `ED_editors_exit()`, clipboard frees, `memory_cache::clear()`, render engine teardown                                                      |
+| 6     | Main library (`G_MAIN`)               | `BKE_blender_free()` — frees entire library and space-types                                                                                |
+| 7     | Undo system types                     | `ED_undosys_type_free()` — **after** `BKE_blender_free`; undo steps ref blend data                                                         |
+| 8     | Animation copy buffers                | `ANIM_fcurves_copybuf_free()` and related — **after** `BKE_blender_free`                                                                   |
+| 9     | Gizmo type tables                     | `wm_gizmomaptypes_free()`, `wm_gizmogrouptype_free()`, `wm_gizmotype_free()` — **after** `BKE_blender_free`                                |
+| 10    | UI list types                         | `WM_uilisttype_free()` — **after** `BKE_blender_free`                                                                                      |
+| 11    | Font system                           | `BLF_exit()`                                                                                                                               |
+| 12    | Translation system                    | `BLT_lang_free()`                                                                                                                          |
+| 13    | Keying set infos                      | `animrig::keyingset_infos_exit()`                                                                                                          |
+| 14    | Python                                | `BPY_python_end(do_python_exit)` — **after** `BKE_blender_free`; Blender holds PyObject refs so Python must end after the library is freed |
+| 15    | File selector menus                   | `ED_file_exit()`                                                                                                                           |
+| 16    | GPU resources + UI                    | `DRW_gpu_context_enable_ex`, `ui::ui_exit()`, `GPU_shader_cache_dir_clear_old()`, `GPU_exit()`, `DRW_gpu_context_destroy()`                |
+| 17    | User preferences                      | `BKE_blender_userdef_data_free(&U, false)`                                                                                                 |
+| 18    | RNA type system                       | `RNA_exit()` — after Python so struct Python slots are cleared first                                                                       |
+| 19    | GHOST windowing                       | `wm_ghost_exit()`                                                                                                                          |
+| 20    | bContext                              | `CTX_free(C)`                                                                                                                              |
+| 21    | DNA/SDNA                              | `DNA_sdna_current_free()`                                                                                                                  |
+| 22    | Thread API                            | `BLI_threadapi_exit()`, `BLI_task_scheduler_exit()`                                                                                        |
+| 23    | Sound/FFMPEG                          | `BKE_sound_exit_once()`                                                                                                                    |
+| 24    | App directories                       | `BKE_appdir_exit()`                                                                                                                        |
+| 25    | Atexit callbacks                      | `BKE_blender_atexit()`                                                                                                                     |
+| 26    | Autosave + temp dir                   | `wm_autosave_delete()`, `BKE_tempdir_session_purge()`                                                                                      |
+| 27    | Logging                               | `CLG_exit()` — must be last; nothing may log after this                                                                                    |
+
+> **5.1.1 update:** The shutdown sequence was significantly reordered. The most important change is that `BKE_blender_free()` (step 6) now runs **before** animation copy buffers, gizmo tables, UI list types, and Python. The old note that Python runs "before `BKE_blender_free`" is no longer correct; the code comment in `wm_init_exit.cc` explicitly documents this was changed in Blender 2.5.
 
 Notice that `CLG_exit()` is intentionally the **last** thing shut down because almost every subsystem above may log warning or info messages during its own teardown.
 
@@ -1125,13 +1161,34 @@ void main_args_setup(bContext *C, bArgs *ba, bool all)
   ...
   BLI_args_pass_set(ba, ARG_PASS_ENVIRONMENT);
   BLI_args_add(ba, nullptr, "--python-use-system-env", ...);
+  BLI_args_add(ba, nullptr, "--python-use-user-env", ...);   /* 5.1.1: new */
   BLI_args_add(ba, nullptr, "--env-system-datafiles", ...);
+  BLI_args_add(ba, nullptr, "--env-system-scripts", ...);
+  BLI_args_add(ba, nullptr, "--env-system-python", ...);
+  BLI_args_add(ba, nullptr, "--env-system-extensions", ...);
   BLI_args_add(ba, "-t", "--threads", ...);
+  /* 5.1.1: log and GPU args moved into ENVIRONMENT pass */
+  BLI_args_add(ba, nullptr, "--log", ...); /* and --log-level, --log-show-source, etc. */
+  BLI_args_add(ba, nullptr, "--gpu-backend", ...);
+  BLI_args_add(ba, nullptr, "--gpu-vsync", ...);
+  BLI_args_add(ba, nullptr, "--gpu-compilation-subprocesses", ...); /* 5.1.1: new */
+  BLI_args_add(ba, nullptr, "--profile-gpu", ...);                  /* 5.1.1: new */
 
   BLI_args_pass_set(ba, ARG_PASS_SETTINGS);
   BLI_args_add(ba, "-h", "--help", ...);
+  BLI_args_add(ba, "-v", "--version", ...);
+  BLI_args_add(ba, "-y", "--enable-autoexec", ...);
+  BLI_args_add(ba, "-Y", "--disable-autoexec", ...);
+  BLI_args_add(ba, nullptr, "--offline-mode", ...);
+  BLI_args_add(ba, nullptr, "--online-mode", ...);
+  BLI_args_add(ba, nullptr, "--disable-crash-handler", ...); /* 5.1.1: new */
+  BLI_args_add(ba, nullptr, "--disable-abort-handler", ...); /* 5.1.1: new */
+  BLI_args_add(ba, "-q", "--quiet", ...);                    /* 5.1.1: new */
   BLI_args_add(ba, "-b", "--background", ...);
   BLI_args_add(ba, "-c", "--command", ...);
+  BLI_args_add(ba, nullptr, "--qos", ...);                    /* 5.1.1: new */
+  BLI_args_add(ba, nullptr, "--disable-depsgraph-on-file-load", ...); /* 5.1.1: new */
+  BLI_args_add(ba, nullptr, "--disable-liboverride-auto-resync", ...); /* 5.1.1: new */
   BLI_args_add(ba, nullptr, "--factory-startup", ...);
 
   BLI_args_pass_set(ba, ARG_PASS_FINAL);
@@ -1187,7 +1244,17 @@ So some arguments **do work immediately** and can be overwritten by later file l
 
 ### Example supporting excerpts
 
-**Background mode**
+**Background mode** (`WITH_PYTHON_MODULE` / `WITH_HEADLESS` path)
+
+```cpp
+/* 5.1.1: WITH_HEADLESS builds now also force background mode. */
+#if defined(WITH_PYTHON_MODULE) || defined(WITH_HEADLESS)
+  G.background = true;
+  BKE_sound_force_device("None");
+#endif
+```
+
+**Background mode** (regular `--background` flag path)
 
 ```cpp
 static void background_mode_set()

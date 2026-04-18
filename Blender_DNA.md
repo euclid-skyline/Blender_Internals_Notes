@@ -14,6 +14,7 @@
   - [3.1 The `makesdna` tool](#31-the-makesdna-tool)
   - [3.2 The `SDNA` binary format](#32-the-sdna-binary-format)
   - [3.3 How structs are included](#33-how-structs-are-included)
+  - [3.4 How `SRC_DNA_INC` is resolved at build time](#34-how-src_dna_inc-is-resolved-at-build-time)
 - [4) Runtime: the `SDNA` struct](#4-runtime-the-sdna-struct)
   - [4.1 `SDNA_Struct` and `SDNA_StructMember`](#41-sdna_struct-and-sdna_structmember)
   - [4.2 Startup initialization – `DNA_sdna_current_init()`](#42-startup-initialization--dna_sdna_current_init)
@@ -165,6 +166,48 @@ struct MyRuntimeOnlyStruct {
 ```
 
 Double-`#` structs are parsed by `makesdna` but silently dropped from the output. They are typically runtime-only data that must be declared in the same header for C++ reasons but must never appear on disk.
+
+### 3.4 How `SRC_DNA_INC` is resolved at build time
+
+`SRC_DNA_INC` is **not** a discovered glob — it is an explicit, hand-maintained CMake list variable.
+
+**Defined in:** `source/blender/CMakeLists.txt` (lines 5–103)
+
+```cmake
+set(SRC_DNA_INC
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_ID.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_ID_enums.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_action_types.h
+  # ... ~100 more absolute paths ...
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_xr_types.h
+)
+```
+
+Each entry is an **absolute path** constructed from `${CMAKE_CURRENT_SOURCE_DIR}` (which is `source/blender/` at that point). The list covers every `DNA_*_types.h`, `DNA_*_enums.h`, and shared utility header (`DNA_defs.h`, `DNA_listBase.h`, `DNA_genfile.h`, etc.) that must be visible to `makesdna`.
+
+Because it is defined in the parent `CMakeLists.txt` before `add_subdirectory(makesdna)` is called, CMake makes it available to the `makesdna/intern/CMakeLists.txt` child scope via normal CMake variable inheritance.
+
+**Consumed in:** `source/blender/makesdna/intern/CMakeLists.txt` (lines 35–40)
+
+```cmake
+foreach(header ${SRC_DNA_INC})
+  get_filename_component(dna_header_file ${header} NAME)       # strip to basename
+  string(APPEND DNA_INCLUDE_TEXT "#include \"${header}\"\n")  # for dna_includes_all.h
+  string(APPEND DNA_FILE_LIST    "\t\"${dna_header_file}\",\n") # for dna_includes_as_strings.h
+endforeach()
+
+file(GENERATE OUTPUT ${dna_header_include_file} CONTENT "${DNA_INCLUDE_TEXT}")
+file(GENERATE OUTPUT ${dna_header_string_file}  CONTENT "${DNA_FILE_LIST}")
+```
+
+This `foreach` loop produces two **build-time generated** files in `${CMAKE_CURRENT_BINARY_DIR}` (i.e. inside the CMake build tree under `.../makesdna/intern/`):
+
+| Generated file              | Content                                           | Consumer                                                                                 |
+| --------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `dna_includes_all.h`        | One `#include "<absolute-path>"` per DNA header   | Compiled into `makesdna` executable so all DNA types are in scope                        |
+| `dna_includes_as_strings.h` | One `"<basename>",` string literal per DNA header | `#include`d by `makesdna.cc` so the tool knows which filenames to report inside the SDNA |
+
+Adding a new DNA header therefore requires **two steps**: (1) add it to `SRC_DNA_INC` in `source/blender/CMakeLists.txt`, (2) re-run CMake — the generated files and `makesdna` will pick it up automatically on the next build.
 
 ---
 

@@ -69,7 +69,7 @@
 
 The name comes from its acronym expansion: **Struct DNA** (`SDNA`). All the headers live in:
 
-```
+```text
 source/blender/makesdna/
 ```
 
@@ -129,7 +129,7 @@ The binary layout written by `makesdna` and decoded by `dna_genfile.cc` follows 
 
 **File:** `source/blender/makesdna/intern/dna_genfile.cc`
 
-```
+```text
 SDNA (4 bytes) – magic number
 NAME (4 bytes)
 <nr>           – number of member names (int)
@@ -527,14 +527,14 @@ Blender's Attribute API (`BKE_attribute.hh`) builds on top of `CustomData` to pr
 
 ```mermaid
 flowchart TD
-    A["CMake build starts"] --> B["makesdna tool is compiled\n(makesdna.cc)"]
-    B --> C["makesdna reads all DNA_*_types.h headers\n(listed in dna_includes_as_strings.h)"]
-    C --> D["Parses struct definitions\nComputes field sizes and alignments\nfor 32-bit and 64-bit pointer sizes"]
-    D --> E["Applies rename aliases\nfrom dna_rename_defs.h"]
-    E --> F["Encodes SDNA blob:\nSDNA → NAME → TYPE → TLEN → STRC sections"]
-    F --> G["Writes dna.cc\ncontaining DNAstr[] and DNAlen"]
-    G --> H["Blender executable compiled;\nDNAstr[] linked in as a symbol"]
-    H --> I["Every .blend file written by this binary\nalso embeds a copy of DNAstr[]"]
+    A["CMake build starts"] --> B["makesdna tool is compiled<br/>(makesdna.cc)"]
+    B --> C["makesdna reads all DNA_*_types.h headers<br/>(listed in dna_includes_as_strings.h)"]
+    C --> D["Parses struct definitions<br/>Computes field sizes and alignments<br/>for 32-bit and 64-bit pointer sizes"]
+    D --> E["Applies rename aliases<br/>from dna_rename_defs.h"]
+    E --> F["Encodes SDNA blob:<br/>SDNA → NAME → TYPE → TLEN → STRC sections"]
+    F --> G["Writes dna.cc<br/>containing DNAstr[] and DNAlen"]
+    G --> H["Blender executable compiled;<br/>DNAstr[] linked in as a symbol"]
+    H --> I["Every .blend file written by this binary<br/>also embeds a copy of DNAstr[]"]
 ```
 
 ### 10.2 SDNA binary layout (class diagram)
@@ -575,18 +575,18 @@ classDiagram
 
 ```mermaid
 flowchart TD
-    A["Open .blend file"] --> B["blenloader reads file header\nand locates embedded SDNA block"]
-    B --> C["Decode file's SDNA\nDNA_sdna_from_data(file_sdna_blob)"]
-    C --> D["blo_do_versions_dna\nPatches file SDNA for very old renames"]
-    D --> E["DNA_struct_get_compareflags\nCompares file SDNA vs binary SDNA\nfor every struct"]
+    A["Open .blend file"] --> B["blenloader reads file header<br/>and locates embedded SDNA block"]
+    B --> C["Decode file's SDNA<br/>DNA_sdna_from_data(file_sdna_blob)"]
+    C --> D["blo_do_versions_dna<br/>Patches file SDNA for very old renames"]
+    D --> E["DNA_struct_get_compareflags<br/>Compares file SDNA vs binary SDNA<br/>for every struct"]
     E --> F{Struct compare flag?}
-    F -- SDNA_CMP_EQUAL --> G["Direct memcpy\ninto new memory"]
-    F -- SDNA_CMP_NOT_EQUAL --> H["DNA_struct_reconstruct\nField-by-field copy with type conversion\nZero-fill new fields"]
-    F -- SDNA_CMP_REMOVED --> I["Skip / discard\n(struct no longer exists)"]
+    F -- SDNA_CMP_EQUAL --> G["Direct memcpy<br/>into new memory"]
+    F -- SDNA_CMP_NOT_EQUAL --> H["DNA_struct_reconstruct<br/>Field-by-field copy with type conversion<br/>Zero-fill new fields"]
+    F -- SDNA_CMP_REMOVED --> I["Skip / discard<br/>(struct no longer exists)"]
     G --> J["Data-block fully loaded"]
     H --> J
     I --> J
-    J --> K["blenloader fixup pass:\nResolves ID pointers (library linking)\nRuns BKE versioning for data migration"]
+    J --> K["blenloader fixup pass:<br/>Resolves ID pointers (library linking)<br/>Runs BKE versioning for data migration"]
 ```
 
 ### 10.4 DNA struct inheritance pattern (class diagram)

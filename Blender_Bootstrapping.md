@@ -894,7 +894,7 @@ So all installed add-ons and app-template extensions are loaded at this point th
 
 The source code itself documents why this ordering is non-trivial:
 
-```
+```text
 NOTE(@ideasman42): Startup file and order of initialization.
 
 Loading BLENDER_STARTUP_FILE, BLENDER_USERPREF_FILE, starting Python

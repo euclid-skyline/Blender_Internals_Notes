@@ -358,7 +358,7 @@ Because DNA structs are binary-dumped to disk, they follow strict rules that dif
 
 **File:** `source/blender/makesdna/intern/dna_genfile.cc` (header comment)
 
-```
+```text
 Alignment rules to avoid platform padding:
   - char   : 1-byte aligned
   - short  : 2-byte aligned
@@ -481,7 +481,7 @@ The right-hand side is the current name; the left-hand side is what old `.blend`
 
 Before editing this file, the comment instructs you to hash `dna.cc`:
 
-```
+```text
 sha256sum $BUILD_DIR/source/blender/makesdna/intern/dna.cc
 ```
 

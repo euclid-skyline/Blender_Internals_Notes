@@ -76,7 +76,7 @@
 
 The **Blender Kernel** (`blenkernel`, abbreviated `BKE`) is the largest and most central library in the Blender source tree. It lives at:
 
-```
+```text
 source/blender/blenkernel/
 ```
 

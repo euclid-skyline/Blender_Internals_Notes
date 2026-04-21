@@ -62,7 +62,9 @@ To navigate Blender source effectively, you should be comfortable with the archi
 
 ### 1.1 Scene Graph Architecture
 
-Scene graph architecture defines how object hierarchies, transforms, and dependencies are organized and evaluated across a 3D scene.
+- What it is: A structure that organizes objects in parent-child hierarchies and evaluates transforms and dependencies through that hierarchy.
+- Why it matters: Correct transform propagation is foundational for object placement, animation, and constraints.
+- Where to apply it in Blender: Object transform evaluation, parenting logic, and depsgraph-driven world matrix updates.
 
 Key ideas:
 
@@ -79,7 +81,9 @@ Why this matters in Blender:
 
 ### 1.2 Data-Oriented Design (DOD)
 
-Data-oriented design focuses on memory layout and iteration patterns to maximize performance in large geometry and evaluation workloads.
+- What it is: A performance-oriented design approach that prioritizes data layout and cache-friendly iteration over class-like abstraction.
+- Why it matters: Large meshes and modifier stacks must run fast and predictably under heavy workloads.
+- Where to apply it in Blender: Mesh evaluation paths, CustomData access, and tight loops in geometry and modifier code.
 
 Key ideas:
 
@@ -95,7 +99,9 @@ Why this matters in Blender:
 
 ### 1.3 Node-Based Architecture
 
-Node-based architecture models computation as connected units of typed inputs and outputs, enabling modular and scalable graph execution.
+- What it is: A graph model where nodes perform operations and typed sockets define data flow between operations.
+- Why it matters: It enables modular authoring, reuse, and scalable computation pipelines.
+- Where to apply it in Blender: Geometry Nodes, Shader Nodes, and Compositor node tree evaluation and execution.
 
 Key ideas:
 
@@ -112,7 +118,9 @@ Why this matters in Blender:
 
 ### 1.4 Plugin and Extension Architecture
 
-Plugin architecture allows new behaviors to be added through registration, metadata, and callbacks without rewriting the application core.
+- What it is: An extensibility model based on registration, metadata, and callback interfaces.
+- Why it matters: It allows features to be added without destabilizing or rewriting core systems.
+- Where to apply it in Blender: Operators, add-ons, custom tools, and RNA-backed runtime type exposure.
 
 Key ideas:
 
@@ -128,7 +136,9 @@ Why this matters in Blender:
 
 ### 1.5 Dependency Graph Architecture
 
-Dependency graph architecture controls update order by tracking relationships and reevaluating only what changed.
+- What it is: A directed dependency system that tracks relationships and schedules evaluation in valid order.
+- Why it matters: It prevents stale results and avoids unnecessary full-scene recalculation.
+- Where to apply it in Blender: Animation updates, constraints, modifiers, and scene-wide change propagation.
 
 Key ideas:
 
@@ -151,7 +161,9 @@ Blender is largely written in C and C++, but many object-oriented design pattern
 
 ### 2.1 Strategy Pattern
 
-The strategy pattern packages interchangeable algorithms behind one interface so behavior can vary without changing caller logic.
+- What it is: A pattern that encapsulates multiple interchangeable algorithms behind a common interface.
+- Why it matters: It simplifies swapping behavior without modifying call sites.
+- Where to apply it in Blender: Modifier implementations, constraint solvers, and interchangeable operation backends.
 
 Common use:
 
@@ -165,7 +177,9 @@ Concept:
 
 ### 2.2 Factory Pattern
 
-The factory pattern centralizes object creation, making type-driven instantiation and registration-based construction predictable.
+- What it is: A creation pattern that builds concrete objects from type information through centralized logic.
+- Why it matters: It keeps instantiation consistent and decouples creation from usage.
+- Where to apply it in Blender: RNA type creation, node instantiation, and operator/type registration flows.
 
 Common use:
 
@@ -179,7 +193,9 @@ Concept:
 
 ### 2.3 Visitor Pattern
 
-The visitor pattern separates traversal from operations, allowing new processing steps over complex structures without modifying node types.
+- What it is: A pattern that applies operations to structure elements without embedding the operation in each element type.
+- Why it matters: It improves extensibility when traversing heterogeneous structures.
+- Where to apply it in Blender: Node tree traversals, dependency graph walks, and analysis or export passes.
 
 Common use:
 
@@ -192,7 +208,9 @@ Concept:
 
 ### 2.4 Command Pattern
 
-The command pattern represents actions as executable units, which makes undo and redo practical and consistent.
+- What it is: A pattern that wraps actions as command objects or units with executable behavior.
+- Why it matters: It enables reliable undo/redo and action history management.
+- Where to apply it in Blender: Operator execution lifecycle and undo stack integration.
 
 Common use:
 
@@ -205,7 +223,9 @@ Concept:
 
 ### 2.5 Observer Pattern
 
-The observer pattern propagates state changes through notifications so dependent systems stay synchronized with minimal coupling.
+- What it is: A publish-subscribe pattern where observers react to state changes in observed subjects.
+- Why it matters: It keeps systems synchronized while reducing direct coupling.
+- Where to apply it in Blender: Notifier systems, dependency updates, and UI redraw signaling.
 
 Common use:
 
@@ -218,7 +238,9 @@ Concept:
 
 ### 2.6 Builder Pattern
 
-The builder pattern creates complex objects in stages, improving readability and correctness for multi-step configuration.
+- What it is: A staged construction pattern for assembling complex objects step by step.
+- Why it matters: It improves clarity and reduces errors in multi-part configuration.
+- Where to apply it in Blender: RNA property definitions and programmatic node tree assembly.
 
 Common use:
 
@@ -231,7 +253,9 @@ Concept:
 
 ### 2.7 Dataflow Pattern
 
-Dataflow pattern treats processing as data moving through connected operators, where links define execution dependencies.
+- What it is: A computational model where connected operators transform data as it flows through a graph.
+- Why it matters: It makes dependency-driven evaluation and modular graph design natural.
+- Where to apply it in Blender: Geometry Nodes execution, shader graph evaluation, and compositor pipelines.
 
 Common use:
 
@@ -251,7 +275,9 @@ Strong math fundamentals are mandatory for graphics, simulation, and animation c
 
 ### 3.1 Linear Algebra
 
-Linear algebra provides the language for transforms, orientations, projections, and coordinate conversions in graphics systems.
+- What it is: The mathematical foundation for vectors, matrices, rotations, and coordinate space conversions.
+- Why it matters: Nearly all transform and camera computations depend on it.
+- Where to apply it in Blender: Object transforms, rigging math, camera projection, and viewport calculations.
 
 You should know:
 
@@ -268,7 +294,9 @@ Why this matters in Blender:
 
 ### 3.2 Geometry
 
-Geometry covers the shape-level math used for intersections, surface properties, and robust mesh operations.
+- What it is: The study of shape, surface properties, and geometric relationships in 2D/3D space.
+- Why it matters: Robust geometric operations are required for modeling tools and shading correctness.
+- Where to apply it in Blender: Intersection tests, normals/tangents, snapping, picking, and mesh operations.
 
 You should know:
 
@@ -283,7 +311,9 @@ Why this matters in Blender:
 
 ### 3.3 Numerical Methods
 
-Numerical methods ensure interpolation, curves, and iterative computations remain stable and accurate under floating-point limits.
+- What it is: Techniques for stable approximation, interpolation, and iterative computation with floating-point numbers.
+- Why it matters: Numerical instability can produce jitter, drift, and non-deterministic behavior.
+- Where to apply it in Blender: Animation interpolation, spline evaluation, constraints, and simulation stepping.
 
 You should know:
 
@@ -304,7 +334,9 @@ Blender combines classic algorithms with domain-specific optimizations.
 
 ### 4.1 Graph Algorithms
 
-Graph algorithms provide the rules for ordering, validating, and traversing dependency relationships in complex systems.
+- What it is: Algorithms for traversing, ordering, and validating node/edge relationships in directed graphs.
+- Why it matters: Correct dependency order is essential for deterministic evaluation.
+- Where to apply it in Blender: Depsgraph construction, topological ordering, and cycle detection.
 
 You should know:
 
@@ -318,7 +350,9 @@ Why this matters in Blender:
 
 ### 4.2 Mesh Algorithms
 
-Mesh algorithms manipulate topology and geometry efficiently for modeling, procedural operations, and cleanup workflows.
+- What it is: Algorithms that edit mesh connectivity and geometry for modeling and procedural workflows.
+- Why it matters: Efficient topology operations directly affect tool responsiveness and result quality.
+- Where to apply it in Blender: BMesh editing, subdivision, booleans, remeshing, and loop/ring selection logic.
 
 You should know:
 
@@ -333,7 +367,9 @@ Why this matters in Blender:
 
 ### 4.3 Spatial Algorithms
 
-Spatial algorithms accelerate geometric queries by organizing 3D data for fast intersection and nearest-neighbor lookups.
+- What it is: Algorithms and data structures that accelerate spatial queries in 3D scenes.
+- Why it matters: Naive geometric queries do not scale to production scene complexity.
+- Where to apply it in Blender: BVH ray casts, KD-tree nearest searches, picking, and collision-related queries.
 
 You should know:
 
@@ -348,7 +384,9 @@ Why this matters in Blender:
 
 ### 4.4 Rendering Algorithms
 
-Rendering algorithms define how light and materials are computed to produce images in real-time and offline pipelines.
+- What it is: Methods for simulating light transport and material response to produce final pixels.
+- Why it matters: Image quality and render performance are both determined by algorithm choice.
+- Where to apply it in Blender: Eevee raster techniques, Cycles path tracing, and shadowing/light integration code.
 
 You should know:
 
@@ -369,7 +407,9 @@ Before reading GPU and renderer internals, build a solid graphics pipeline found
 
 ### 5.1 GPU Concepts
 
-GPU fundamentals explain how geometry, shaders, and render targets flow through the graphics hardware pipeline.
+- What it is: Core concepts for how graphics hardware processes geometry and shading workloads.
+- Why it matters: Correct buffer, shader, and state management is critical for rendering correctness and speed.
+- Where to apply it in Blender: GPU module code, draw manager integration, and backend-specific resource handling.
 
 You should know:
 
@@ -381,7 +421,9 @@ You should know:
 
 ### 5.2 Rendering Pipelines
 
-Rendering pipelines describe the sequence and data layout decisions used to balance visual quality and performance.
+- What it is: The ordered rendering stages and data layout strategy used to produce frames.
+- Why it matters: Pipeline architecture determines performance, memory usage, and achievable visual features.
+- Where to apply it in Blender: Eevee frame passes, deferred/forward tradeoffs, and real-time viewport rendering flow.
 
 You should know:
 
@@ -391,7 +433,9 @@ You should know:
 
 ### 5.3 Shader Languages and Intermediate Forms
 
-Shader languages and intermediate forms define how shading logic is authored, compiled, and translated across GPU backends.
+- What it is: Source and intermediate representations used to author and translate GPU shader programs.
+- Why it matters: Cross-platform rendering depends on consistent shader translation and backend compatibility.
+- Where to apply it in Blender: GLSL authoring, backend translation paths, and SPIR-V or platform shader compilation.
 
 You should know:
 
@@ -411,7 +455,9 @@ Blender's performance and flexibility depend on choosing the right structures fo
 
 ### 6.1 Half-Edge and Editable Mesh Models (BMesh Concepts)
 
-Half-edge style structures represent mesh connectivity explicitly, enabling safe and efficient topology editing.
+- What it is: Connectivity-centric mesh structures that store explicit relations between vertices, edges, loops, and faces.
+- Why it matters: Reliable topology editing requires fast, consistent neighborhood access.
+- Where to apply it in Blender: BMesh edit operations, topology mutation tools, and mesh editing operators.
 
 You should know:
 
@@ -425,7 +471,9 @@ Why this matters in Blender:
 
 ### 6.2 Attribute and Custom Data Layers
 
-Attribute layer systems store rich per-element data and keep it consistent as geometry is transformed and regenerated.
+- What it is: Flexible layered storage for per-element mesh or geometry attributes.
+- Why it matters: Modern procedural workflows depend on preserving and transforming attributes correctly.
+- Where to apply it in Blender: UV/color/normal data handling, geometry node attributes, and modifier data propagation.
 
 You should know:
 
@@ -439,7 +487,9 @@ Why this matters in Blender:
 
 ### 6.3 Node Trees
 
-Node tree data structures encode nodes, sockets, and links so graph-based tools can validate and evaluate correctly.
+- What it is: Graph data structures that represent nodes, typed sockets, links, and evaluation metadata.
+- Why it matters: Strong graph structure is required for validation, scheduling, and execution correctness.
+- Where to apply it in Blender: Node editors, node graph serialization, and execution preparation.
 
 You should know:
 
@@ -453,7 +503,9 @@ Why this matters in Blender:
 
 ### 6.4 Spatial Trees (BVH and Related Structures)
 
-Spatial trees trade preprocessing cost for much faster runtime queries in rendering, physics, and geometry tools.
+- What it is: Hierarchical spatial partitioning structures that accelerate query operations in 3D space.
+- Why it matters: They make rendering and geometric query workloads tractable at scale.
+- Where to apply it in Blender: Ray tracing acceleration, physics broadphase queries, and geometry node spatial lookups.
 
 You should know:
 
@@ -473,7 +525,9 @@ Blender's DNA/RNA pipeline combines reflection-like metadata with binary file co
 
 ### 7.1 Reflection Concepts (RNA)
 
-Reflection metadata describes types and properties at runtime so systems can inspect, edit, and expose data dynamically.
+- What it is: Runtime metadata that describes types, properties, and access rules for data introspection.
+- Why it matters: It enables dynamic tooling, scripting exposure, and consistent UI/property behavior.
+- Where to apply it in Blender: RNA definitions, Python API exposure, and property-driven UI integration.
 
 You should know:
 
@@ -488,7 +542,9 @@ Why this matters in Blender:
 
 ### 7.2 Binary Serialization Concepts (DNA)
 
-Binary serialization concepts ensure structured data can be stored, loaded, and migrated across versions reliably.
+- What it is: Binary data layout and persistence rules for storing and restoring structured application state.
+- Why it matters: File compatibility and safe version migration depend on serialization discipline.
+- Where to apply it in Blender: .blend read/write paths, struct versioning, and pointer remapping during load.
 
 You should know:
 

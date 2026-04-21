@@ -66,7 +66,7 @@
 
 ## 2) What is DNA?
 
-**DNA** stands for **Data Definition Layer** — more precisely, it is the subsystem responsible for defining, encoding, and versioning every C/C++ struct that Blender writes to a `.blend` file.
+**DNA** stands for **Data Naming and Addressing**. It is Blender's binary **Data Definition Layer** — more precisely, it is the subsystem responsible for defining, encoding, and versioning every C/C++ struct that Blender writes to a `.blend` file. It is the schema embedded in every .blend file that describes every struct layout (names, types, sizes) so the file loader can reconstruct data correctly even across versions.
 
 The name comes from its acronym expansion: **Struct DNA** (`SDNA`). All the headers live in:
 

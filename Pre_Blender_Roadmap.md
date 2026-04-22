@@ -39,7 +39,6 @@ This document describes the core pre-Blender knowledge needed before contributin
 - [7. Compiler and Reflection Concepts](#7-compiler-and-reflection-concepts)
   - [7.1 Reflection Concepts (RNA)](#71-reflection-concepts-rna)
   - [7.2 Binary Serialization Concepts (DNA)](#72-binary-serialization-concepts-dna)
-- [Closing Note](#closing-note)
 
 ---
 
@@ -64,7 +63,7 @@ To navigate Blender source effectively, you should be comfortable with the archi
 
 - What it is: A structure that organizes objects in parent-child hierarchies and evaluates transforms and dependencies through that hierarchy.
 - Why it matters: Correct transform propagation is foundational for object placement, animation, and constraints.
-- Where to apply it in Blender: Object transform evaluation, parenting logic, and depsgraph-driven world matrix updates.
+- Where to apply it in Blender: Object transform evaluation and parenting in BKE, with world matrix update scheduling in DEG (depsgraph).
 
 Key ideas:
 
@@ -83,7 +82,7 @@ Why this matters in Blender:
 
 - What it is: A performance-oriented design approach that prioritizes data layout and cache-friendly iteration over class-like abstraction.
 - Why it matters: Large meshes and modifier stacks must run fast and predictably under heavy workloads.
-- Where to apply it in Blender: Mesh evaluation paths, CustomData access, and tight loops in geometry and modifier code.
+- Where to apply it in Blender: Mesh and modifier hot paths in BKE, plus CustomData and attribute storage in DNA/BKE mesh data.
 
 Key ideas:
 
@@ -101,7 +100,7 @@ Why this matters in Blender:
 
 - What it is: A graph model where nodes perform operations and typed sockets define data flow between operations.
 - Why it matters: It enables modular authoring, reuse, and scalable computation pipelines.
-- Where to apply it in Blender: Geometry Nodes, Shader Nodes, and Compositor node tree evaluation and execution.
+- Where to apply it in Blender: Node definitions and execution in NOD/BKE, including Geometry Nodes, Shader Nodes, and Compositor node trees.
 
 Key ideas:
 
@@ -120,7 +119,7 @@ Why this matters in Blender:
 
 - What it is: An extensibility model based on registration, metadata, and callback interfaces.
 - Why it matters: It allows features to be added without destabilizing or rewriting core systems.
-- Where to apply it in Blender: Operators, add-ons, custom tools, and RNA-backed runtime type exposure.
+- Where to apply it in Blender: Operator/tool registration in WM/ED, add-on exposure through RNA, and runtime type metadata in RNA.
 
 Key ideas:
 
@@ -138,7 +137,7 @@ Why this matters in Blender:
 
 - What it is: A directed dependency system that tracks relationships and schedules evaluation in valid order.
 - Why it matters: It prevents stale results and avoids unnecessary full-scene recalculation.
-- Where to apply it in Blender: Animation updates, constraints, modifiers, and scene-wide change propagation.
+- Where to apply it in Blender: Dependency scheduling and change propagation in DEG, feeding BKE animation, constraints, and modifiers.
 
 Key ideas:
 
@@ -163,7 +162,7 @@ Blender is largely written in C and C++, but many object-oriented design pattern
 
 - What it is: A pattern that encapsulates multiple interchangeable algorithms behind a common interface.
 - Why it matters: It simplifies swapping behavior without modifying call sites.
-- Where to apply it in Blender: Modifier implementations, constraint solvers, and interchangeable operation backends.
+- Where to apply it in Blender: Strategy-style dispatch in BKE modifier and constraint systems, and selected kernel backends in intern modules.
 
 Common use:
 
@@ -179,7 +178,7 @@ Concept:
 
 - What it is: A creation pattern that builds concrete objects from type information through centralized logic.
 - Why it matters: It keeps instantiation consistent and decouples creation from usage.
-- Where to apply it in Blender: RNA type creation, node instantiation, and operator/type registration flows.
+- Where to apply it in Blender: Type construction in RNA, node type registration in NOD, and operator registration in WM.
 
 Common use:
 
@@ -195,7 +194,7 @@ Concept:
 
 - What it is: A pattern that applies operations to structure elements without embedding the operation in each element type.
 - Why it matters: It improves extensibility when traversing heterogeneous structures.
-- Where to apply it in Blender: Node tree traversals, dependency graph walks, and analysis or export passes.
+- Where to apply it in Blender: Visitor-style traversals in NOD node trees, DEG relation/eval walks, and export passes in IO modules.
 
 Common use:
 
@@ -210,7 +209,7 @@ Concept:
 
 - What it is: A pattern that wraps actions as command objects or units with executable behavior.
 - Why it matters: It enables reliable undo/redo and action history management.
-- Where to apply it in Blender: Operator execution lifecycle and undo stack integration.
+- Where to apply it in Blender: Command flow in WM operators and ED undo integration, including invoke/exec/cancel paths.
 
 Common use:
 
@@ -225,7 +224,7 @@ Concept:
 
 - What it is: A publish-subscribe pattern where observers react to state changes in observed subjects.
 - Why it matters: It keeps systems synchronized while reducing direct coupling.
-- Where to apply it in Blender: Notifier systems, dependency updates, and UI redraw signaling.
+- Where to apply it in Blender: Observer patterns in WM notifiers, DEG update signaling, and ED/UI redraw triggers.
 
 Common use:
 
@@ -240,7 +239,7 @@ Concept:
 
 - What it is: A staged construction pattern for assembling complex objects step by step.
 - Why it matters: It improves clarity and reduces errors in multi-part configuration.
-- Where to apply it in Blender: RNA property definitions and programmatic node tree assembly.
+- Where to apply it in Blender: Staged definitions in RNA properties and builder-like creation of node graphs in NOD/BKE.
 
 Common use:
 
@@ -255,7 +254,7 @@ Concept:
 
 - What it is: A computational model where connected operators transform data as it flows through a graph.
 - Why it matters: It makes dependency-driven evaluation and modular graph design natural.
-- Where to apply it in Blender: Geometry Nodes execution, shader graph evaluation, and compositor pipelines.
+- Where to apply it in Blender: Dataflow execution in NOD/BKE for Geometry Nodes, shader graphs, and compositor evaluation.
 
 Common use:
 
@@ -277,7 +276,7 @@ Strong math fundamentals are mandatory for graphics, simulation, and animation c
 
 - What it is: The mathematical foundation for vectors, matrices, rotations, and coordinate space conversions.
 - Why it matters: Nearly all transform and camera computations depend on it.
-- Where to apply it in Blender: Object transforms, rigging math, camera projection, and viewport calculations.
+- Where to apply it in Blender: Math utilities in BLI, transform/rigging logic in BKE, and projection math in draw and camera code.
 
 You should know:
 
@@ -296,7 +295,7 @@ Why this matters in Blender:
 
 - What it is: The study of shape, surface properties, and geometric relationships in 2D/3D space.
 - Why it matters: Robust geometric operations are required for modeling tools and shading correctness.
-- Where to apply it in Blender: Intersection tests, normals/tangents, snapping, picking, and mesh operations.
+- Where to apply it in Blender: Geometry kernels in BLI/BKE, mesh normal/tangent code, and snapping/picking in ED/GPU draw paths.
 
 You should know:
 
@@ -313,7 +312,7 @@ Why this matters in Blender:
 
 - What it is: Techniques for stable approximation, interpolation, and iterative computation with floating-point numbers.
 - Why it matters: Numerical instability can produce jitter, drift, and non-deterministic behavior.
-- Where to apply it in Blender: Animation interpolation, spline evaluation, constraints, and simulation stepping.
+- Where to apply it in Blender: FCurve interpolation in BKE animation, curve/spline evaluation in BKE, and numerics in simulation intern modules.
 
 You should know:
 
@@ -336,7 +335,7 @@ Blender combines classic algorithms with domain-specific optimizations.
 
 - What it is: Algorithms for traversing, ordering, and validating node/edge relationships in directed graphs.
 - Why it matters: Correct dependency order is essential for deterministic evaluation.
-- Where to apply it in Blender: Depsgraph construction, topological ordering, and cycle detection.
+- Where to apply it in Blender: Core graph algorithms in DEG relation building, topological sort, and cycle handling.
 
 You should know:
 
@@ -352,7 +351,7 @@ Why this matters in Blender:
 
 - What it is: Algorithms that edit mesh connectivity and geometry for modeling and procedural workflows.
 - Why it matters: Efficient topology operations directly affect tool responsiveness and result quality.
-- Where to apply it in Blender: BMesh editing, subdivision, booleans, remeshing, and loop/ring selection logic.
+- Where to apply it in Blender: Topology algorithms in BMesh/BKE, subdivision and boolean code in modifiers, and edit tools in ED mesh.
 
 You should know:
 
@@ -369,7 +368,7 @@ Why this matters in Blender:
 
 - What it is: Algorithms and data structures that accelerate spatial queries in 3D scenes.
 - Why it matters: Naive geometric queries do not scale to production scene complexity.
-- Where to apply it in Blender: BVH ray casts, KD-tree nearest searches, picking, and collision-related queries.
+- Where to apply it in Blender: Spatial acceleration in BLI BVH/KDTree, picking and ray cast utilities in ED/BKE, and render/physics query code.
 
 You should know:
 
@@ -386,7 +385,7 @@ Why this matters in Blender:
 
 - What it is: Methods for simulating light transport and material response to produce final pixels.
 - Why it matters: Image quality and render performance are both determined by algorithm choice.
-- Where to apply it in Blender: Eevee raster techniques, Cycles path tracing, and shadowing/light integration code.
+- Where to apply it in Blender: Rendering algorithms in Eevee and Cycles, plus shared GPU/DRW light and shadow integration paths.
 
 You should know:
 
@@ -409,7 +408,7 @@ Before reading GPU and renderer internals, build a solid graphics pipeline found
 
 - What it is: Core concepts for how graphics hardware processes geometry and shading workloads.
 - Why it matters: Correct buffer, shader, and state management is critical for rendering correctness and speed.
-- Where to apply it in Blender: GPU module code, draw manager integration, and backend-specific resource handling.
+- Where to apply it in Blender: GPU abstraction and resource APIs in GPU module, draw scheduling in DRW, and backend bindings per platform.
 
 You should know:
 
@@ -423,7 +422,7 @@ You should know:
 
 - What it is: The ordered rendering stages and data layout strategy used to produce frames.
 - Why it matters: Pipeline architecture determines performance, memory usage, and achievable visual features.
-- Where to apply it in Blender: Eevee frame passes, deferred/forward tradeoffs, and real-time viewport rendering flow.
+- Where to apply it in Blender: Pipeline orchestration in DRW/Eevee frame passes, with GPU state transitions and viewport render flow.
 
 You should know:
 
@@ -435,7 +434,7 @@ You should know:
 
 - What it is: Source and intermediate representations used to author and translate GPU shader programs.
 - Why it matters: Cross-platform rendering depends on consistent shader translation and backend compatibility.
-- Where to apply it in Blender: GLSL authoring, backend translation paths, and SPIR-V or platform shader compilation.
+- Where to apply it in Blender: Shader authoring in GPU shader sources, backend compilation paths, and platform translation layers.
 
 You should know:
 
@@ -457,7 +456,7 @@ Blender's performance and flexibility depend on choosing the right structures fo
 
 - What it is: Connectivity-centric mesh structures that store explicit relations between vertices, edges, loops, and faces.
 - Why it matters: Reliable topology editing requires fast, consistent neighborhood access.
-- Where to apply it in Blender: BMesh edit operations, topology mutation tools, and mesh editing operators.
+- Where to apply it in Blender: Editable topology structures in BMesh and BKE mesh editing, plus operator-driven edits in ED.
 
 You should know:
 
@@ -473,7 +472,7 @@ Why this matters in Blender:
 
 - What it is: Flexible layered storage for per-element mesh or geometry attributes.
 - Why it matters: Modern procedural workflows depend on preserving and transforming attributes correctly.
-- Where to apply it in Blender: UV/color/normal data handling, geometry node attributes, and modifier data propagation.
+- Where to apply it in Blender: Attribute storage in DNA/BKE CustomData, geometry node attributes in NOD/BKE, and modifier propagation logic.
 
 You should know:
 
@@ -489,7 +488,7 @@ Why this matters in Blender:
 
 - What it is: Graph data structures that represent nodes, typed sockets, links, and evaluation metadata.
 - Why it matters: Strong graph structure is required for validation, scheduling, and execution correctness.
-- Where to apply it in Blender: Node editors, node graph serialization, and execution preparation.
+- Where to apply it in Blender: Node graph structures in NOD/BKE, editor integration in ED, and serialization support tied to DNA data.
 
 You should know:
 
@@ -505,7 +504,7 @@ Why this matters in Blender:
 
 - What it is: Hierarchical spatial partitioning structures that accelerate query operations in 3D space.
 - Why it matters: They make rendering and geometric query workloads tractable at scale.
-- Where to apply it in Blender: Ray tracing acceleration, physics broadphase queries, and geometry node spatial lookups.
+- Where to apply it in Blender: BVH-like acceleration in render/geometry code, physics broadphase in simulation modules, and spatial lookups in NOD/BKE.
 
 You should know:
 
@@ -527,7 +526,7 @@ Blender's DNA/RNA pipeline combines reflection-like metadata with binary file co
 
 - What it is: Runtime metadata that describes types, properties, and access rules for data introspection.
 - Why it matters: It enables dynamic tooling, scripting exposure, and consistent UI/property behavior.
-- Where to apply it in Blender: RNA definitions, Python API exposure, and property-driven UI integration.
+- Where to apply it in Blender: Type and property reflection in RNA, Python bindings in bpy integration, and UI property panels via RNA metadata.
 
 You should know:
 
@@ -544,7 +543,7 @@ Why this matters in Blender:
 
 - What it is: Binary data layout and persistence rules for storing and restoring structured application state.
 - Why it matters: File compatibility and safe version migration depend on serialization discipline.
-- Where to apply it in Blender: .blend read/write paths, struct versioning, and pointer remapping during load.
+- Where to apply it in Blender: Binary layout and file IO in DNA/Blendfile code, with versioning and pointer remap logic during load.
 
 You should know:
 
@@ -556,9 +555,3 @@ You should know:
 Why this matters in Blender:
 
 - Blender's file format and data migration behavior depend on stable serialization contracts.
-
----
-
-## Closing Note
-
-If you become comfortable with these seven areas, Blender source will feel far less intimidating. You do not need perfect mastery before your first contribution, but this roadmap dramatically shortens the learning curve and helps you read code with the right mental models from day one.

@@ -90,11 +90,15 @@ Source directory references:
 
 Key ideas:
 
-- Hierarchical transforms
-- Parent-child relationships
-- Local space vs world space
-- Dependency propagation through transform chains
-- Lazy evaluation of derived state
+**Hierarchical transforms:** A hierarchical transform is a matrix applied to an object relative to its parent, so each object's final position is the product of its own transform composed with all ancestor transforms. Learn this by manually multiplying parent and child TRS (Translation × Rotation × Scale) matrices and observing how a change at the root affects the entire chain. Important subjects include 4×4 matrix composition, local-to-world matrix derivation, and how transform order affects the result.
+
+**Parent-child relationships:** A parent-child relationship means a child object inherits its parent's transform, so moving the parent moves all descendants automatically. Learn this by building a small scene tree where re-parenting or re-ordering nodes changes evaluated positions. Important subjects include transform inheritance rules, bind-pose vs current-pose concepts in rigging, and how reparenting requires space conversion to preserve visual position.
+
+**Local space vs world space:** Local space is the coordinate system relative to an object's own origin, while world space is relative to the global scene origin. Learn this by converting vectors between spaces using the model matrix and its inverse. Important subjects include the model matrix, view matrix, inverse transforms, change-of-basis operations, and how Blender stores both ob->object_to_world and the local matrix per object.
+
+**Dependency propagation through transform chains:** When a parent's transform changes, every descendant must recompute its world transform in correct hierarchical order before any downstream system reads the result. Learn this by tracing a single position change from a root object down through several levels of children and verifying update order. Important subjects include dirty propagation, topological update ordering, and how the depsgraph tracks transform relations to drive correct re-evaluation.
+
+**Lazy evaluation of derived state:** Lazy evaluation defers recomputing derived data, such as a world matrix, until something actually requests it and the data is marked dirty, avoiding redundant work. Learn this through cache-invalidation and mark-dirty patterns: flag data stale when inputs change, then recompute only on first read. Important subjects include dirty flags, on-demand evaluation, the difference between authoritative source data and cached derived data, and how Blender's DEG decides when to skip re-evaluation.
 
 Why this matters in Blender:
 
@@ -109,10 +113,13 @@ Why this matters in Blender:
 
 Key ideas:
 
-- Struct-of-arrays vs array-of-structs tradeoffs
-- Cache locality and contiguous iteration
-- Reducing pointer chasing in hot loops
-- Data layout chosen for performance-critical passes
+**Struct-of-arrays vs array-of-structs tradeoffs:** Struct-of-arrays (SoA) stores each field of a record type in its own contiguous array, while array-of-structs (AoS) stores all fields together per element; SoA is faster when only one or two fields are accessed per iteration, while AoS is friendlier when all fields are needed together. Learn this by benchmarking a simple vertex loop in both layouts and comparing cache miss counts with a profiler. Important subjects include memory bandwidth, CPU cache line width (typically 64 bytes), SIMD vectorization requirements, and when mixed or hybrid layouts make sense.
+
+**Cache locality and contiguous iteration:** Cache locality means keeping data that is accessed together physically adjacent in memory so each cache line fetch is fully used rather than wasted on unused fields. Learn this by measuring loop throughput over contiguous arrays vs scattered allocations and observing the performance difference. Important subjects include L1/L2/L3 cache sizes, cache line utilization, hardware prefetching, and the cost of random vs sequential access patterns.
+
+**Reducing pointer chasing in hot loops:** Pointer chasing happens when each element holds a pointer to the next data item, forcing the CPU to wait for each memory fetch before it knows the next address. Learn this by refactoring a linked-list traversal to use a flat index array and measuring the speedup. Important subjects include linked list vs flat array tradeoffs, handle/index-based indirection systems, and how to identify pointer-chasing bottlenecks with a memory profiler.
+
+**Data layout chosen for performance-critical passes:** Choosing the right layout for a workload means analyzing which fields are read or written together in a given algorithm and arranging them to minimize wasted bandwidth and maximize vectorization. Learn this by profiling a mesh evaluation pass, identifying which attributes are hot, and reorganizing them into tighter arrays. Important subjects include hot-and-cold data splitting, attribute-of-arrays patterns, profiler-guided layout decisions, and how Blender's CustomData and geometry attribute systems balance flexibility against layout efficiency.
 
 Why this matters in Blender:
 
@@ -127,11 +134,15 @@ Why this matters in Blender:
 
 Key ideas:
 
-- Directed acyclic graph (DAG) models
-- Typed sockets and links
-- Lazy or partial evaluation
-- Node registration and discovery
-- Execution context separation
+**Directed acyclic graph (DAG) models:** A DAG is a graph of nodes connected by directed edges with no cycles, used to represent computation where outputs of some nodes become inputs of others. Learn this by implementing a simple node evaluator that topologically sorts nodes before executing them, rejecting any cycle with an error. Important subjects include graph theory fundamentals, topological sort algorithms, cycle detection via DFS, and how acyclicity is validated when users connect nodes.
+
+**Typed sockets and links:** Sockets define the data type a node inputs or outputs, and links only connect compatible socket types, ensuring the graph carries well-typed data throughout evaluation. Learn this by building a small type system for node connections and implementing type-checking on every link creation attempt. Important subjects include type systems, implicit type conversion rules, socket validation logic, and how Blender handles type mismatches or coercions between linked nodes.
+
+**Lazy or partial evaluation:** Lazy evaluation defers a node's computation until its output is actually needed; partial evaluation limits recomputation only to the nodes downstream of a change. Learn this by building a pull-based evaluator where requesting a final output triggers recursive upstream evaluation, then adding a result cache to skip unchanged nodes. Important subjects include demand-driven evaluation, memoization, incremental computation, and how Blender's node systems decide which nodes are dirty after an edit.
+
+**Node registration and discovery:** Node registration is the mechanism by which each node type announces itself to the system at startup so it can be instantiated by name, enumerated in menus, and serialized to disk by type identifier. Learn this by building a simple node type registry keyed on a string identifier, then implementing a factory that creates instances from that key. Important subjects include factory and registry patterns, self-registering modules, initialization order, and how Blender's NOD module enumerates available node types.
+
+**Execution context separation:** An execution context is the isolated set of state, inputs, and resources threaded through a node graph during one evaluation pass, keeping each evaluation independent from others running concurrently or at different times. Learn this by wrapping all mutable evaluation state into a context object passed explicitly rather than stored globally. Important subjects include context objects, evaluation scope, resource and memory isolation, and how Blender's geometry node execution context carries field inputs, geometry data, and evaluation settings through the tree.
 
 Why this matters in Blender:
 
@@ -146,10 +157,13 @@ Why this matters in Blender:
 
 Key ideas:
 
-- Runtime registration systems
-- Interface tables and callbacks
-- Dynamic dispatch by type and operation
-- Metadata-driven exposure to tools and scripting
+**Runtime registration systems:** A runtime registration system lets new types, operators, or behaviors declare themselves at startup or load time by inserting descriptors into a shared registry, so the core never needs to know about extensions in advance. Learn this by building a string-keyed registry that maps type names to creation functions and calling it from a module initializer. Important subjects include factory registration, self-registering modules, initialization and teardown order, and how Blender's WM and RNA register operators, panel types, and property groups.
+
+**Interface tables and callbacks:** Interface tables are structs of function pointers where each slot defines one behavioral aspect of a type, allowing different implementations to be swapped simply by assigning a different struct. Learn this by implementing a C-style vtable manually, filling it with concrete function addresses, and calling behavior through the table. Important subjects include function pointer syntax, vtable layout, callback safety and lifetime, and how Blender's ModifierTypeInfo and ConstraintTypeInfo structs expose all type-specific behavior as function pointer slots.
+
+**Dynamic dispatch by type and operation:** Dynamic dispatch selects which implementation to invoke based on runtime type information rather than a compile-time type, routing calls through a registry or table lookup. Learn this by implementing a dispatch table keyed on a type enum and routing all type-specific calls through it. Important subjects include type IDs, dispatch tables, tagged unions, and how Blender resolves at runtime which modifier evaluation function or node execution path to call for a given type.
+
+**Metadata-driven exposure to tools and scripting:** Metadata describes properties and behaviors in a declarative, structured way so they can be automatically surfaced in the UI, Python API, and operator search without manual wiring per property. Learn this by building a simple property descriptor system where each property declares its name, type, range, and tooltip, then driving UI rendering from those descriptors. Important subjects include property descriptors, annotation and reflection systems, and how Blender's RNA metadata drives automatic Python API generation, UI panel rendering, and operator property display.
 
 Why this matters in Blender:
 
@@ -164,11 +178,15 @@ Why this matters in Blender:
 
 Key ideas:
 
-- DAG construction from scene relationships
-- Topological scheduling
-- Dirty tagging and invalidation
-- Incremental re-evaluation
-- Parallel execution where possible
+**DAG construction from scene relationships:** The dependency graph is built by scanning scene objects, their parents, constraints, drivers, and modifiers, then creating directed evaluation nodes with edges representing data dependencies between them. Learn this by writing a simple graph builder that turns a list of objects with parent and constraint relationships into a set of nodes and directed edges. Important subjects include relation types (transform, geometry, parameter), node creation from scene data, and how Blender's DEG builder traverses the scene to produce its internal node-relation graph.
+
+**Topological scheduling:** Topological scheduling orders evaluation nodes so every node is guaranteed to run only after all nodes it depends on have already completed, producing a valid linear sequence from a partial order. Learn this by implementing both Kahn's algorithm and a DFS post-order approach on a sample graph and comparing results. Important subjects include Kahn's algorithm, DFS post-order traversal, scheduling queues, and how DEG uses topological order to build its task execution sequence.
+
+**Dirty tagging and invalidation:** Dirty tagging marks a node or piece of data as out-of-date when any of its inputs change, so only stale data gets recomputed rather than the entire scene. Learn this by building a graph where changing one node sets a dirty flag on all downstream nodes, and evaluation only runs for dirty nodes. Important subjects include dirty bit propagation, invalidation scope control, minimal invalidation strategies, and how Blender tags depsgraph component nodes dirty in response to RNA property changes or user edits.
+
+**Incremental re-evaluation:** Incremental evaluation limits recomputation to only the subgraph made dirty by a change, skipping all clean nodes and reusing their cached outputs. Learn this by combining dirty propagation with a cache per node so clean nodes return their stored result immediately. Important subjects include change detection, affected-subgraph extraction, cache validity rules, and how DEG avoids full-scene recomputation after small localized edits by evaluating only the dirty component path.
+
+**Parallel execution where possible:** Independent nodes in the evaluation graph that share no dependencies can be evaluated concurrently on separate threads, multiplying throughput on multi-core hardware. Learn this by identifying sets of nodes with no shared dependency edges and dispatching them to a thread pool simultaneously. Important subjects include thread safety, task graph scheduling, work queues, data race prevention, and how Blender's DEG uses the task scheduler to run independent object evaluations in parallel during a scene update.
 
 Why this matters in Blender:
 
@@ -318,12 +336,17 @@ Source directory references:
 
 You should know:
 
-- Vectors and vector operations
-- Matrices and matrix multiplication
-- Quaternions and rotation composition
-- Transform composition and decomposition
-- Inverse transforms and coordinate conversion
-- Projection matrices and camera space
+**Vectors and vector operations:** Start by searching for "vector dot product cross product projection normalization" and work through small 2D and 3D examples until direction, length, angle, and projection feel automatic. To make this second nature, focus on vector addition/subtraction, dot products for angle/alignment tests, cross products for orthogonal directions, and normalization for direction-only quantities.
+
+**Matrices and matrix multiplication:** Search for "4x4 transformation matrix graphics" and "matrix multiplication order model view projection" so you understand how transforms are represented and combined. The important subjects are matrix layout, row-major vs column-major conventions, multiplication order, homogeneous coordinates, and why multiplying in the wrong order produces visually wrong transforms.
+
+**Quaternions and rotation composition:** Search for "quaternion intuition graphics" and "quaternion vs Euler angles" before diving into formulas, because the intuition matters more than memorizing symbols. You want to know how quaternions avoid gimbal lock, how quaternion multiplication composes rotations, how to convert to and from matrices/Euler angles, and how interpolation with SLERP behaves.
+
+**Transform composition and decomposition:** Search for "TRS decomposition graphics" and "compose transform translate rotate scale" to learn how full object transforms are built and broken back into parts. The important subjects are translation-rotation-scale order, extracting rotation and scale from a matrix, handling non-uniform scale, and understanding where decomposition becomes numerically awkward.
+
+**Inverse transforms and coordinate conversion:** Search for "inverse transform local to world world to local" and practice converting points, directions, and normals between spaces. You should understand matrix inverse basics, why points and directions are transformed differently, how inverse-transpose relates to normals, and how coordinate conversion is used in picking, constraints, and parenting.
+
+**Projection matrices and camera space:** Search for "perspective projection matrix graphics" and "view matrix camera space clip space" to understand how a 3D scene becomes a 2D image. The important subjects are view space, clip space, NDC, perspective divide, near/far planes, field of view, and the model-view-projection pipeline.
 
 Why this matters in Blender:
 
@@ -337,10 +360,13 @@ Why this matters in Blender:
 
 You should know:
 
-- Surface normals and tangent spaces
-- Barycentric coordinates
-- Ray-triangle and ray-mesh intersection
-- Mesh topology basics
+**Surface normals and tangent spaces:** Search for "vertex normal face normal tangent space" and "normal mapping tangent bitangent" to learn how surfaces carry orientation information for lighting and shading. The important subjects are geometric normals vs shading normals, averaged vertex normals, tangent-bitangent-normal frames, and how UV layout affects tangent generation.
+
+**Barycentric coordinates:** Search for "barycentric coordinates triangle interpolation" and "point in triangle barycentric" because barycentric thinking shows up in interpolation, hit testing, and rasterization. You should understand how weights inside a triangle are computed, how they interpolate attributes, and how they are used to detect whether a point lies inside or outside a triangle.
+
+**Ray-triangle and ray-mesh intersection:** Search for "Moller Trumbore algorithm" and "ray mesh intersection BVH" to understand the standard geometric tests behind picking and ray casting. Important subjects are parametric ray form, triangle plane intersection, hit distance t, front-face vs back-face handling, and how acceleration structures reduce the cost of testing many triangles.
+
+**Mesh topology basics:** Search for "manifold vs non-manifold mesh" and "mesh adjacency vertices edges faces" to build an intuition for how geometry is connected beyond just coordinates. Important subjects are adjacency, boundary edges, poles, loops, rings, manifoldness, and why topological validity matters for booleans, subdivision, and editing tools.
 
 Why this matters in Blender:
 
@@ -354,10 +380,13 @@ Why this matters in Blender:
 
 You should know:
 
-- Interpolation methods (LERP, SLERP)
-- Curve and spline evaluation
-- Floating-point precision and error accumulation
-- Numerical stability in iterative systems
+**Interpolation methods (LERP, SLERP):** Search for "LERP vs SLERP graphics" and practice interpolating scalars, vectors, and rotations to see where each method is appropriate. The important subjects are linear interpolation, spherical interpolation, parameter t, interpolation artifacts, and why rotations need different handling than positions.
+
+**Curve and spline evaluation:** Search for "Bezier curve evaluation", "Hermite spline", and "Catmull-Rom spline" so you can compare the most common curve families. Focus on control points, tangents, continuity, parameterization, and sampling because these ideas recur in animation curves, paths, and shape tools.
+
+**Floating-point precision and error accumulation:** Search for "floating point precision graphics" and "catastrophic cancellation numerical analysis" to understand why mathematically correct code can still behave badly on a computer. The important subjects are machine epsilon, rounding error, cancellation, loss of significance, and the difference between float and double tradeoffs.
+
+**Numerical stability in iterative systems:** Search for "numerical stability simulation" and "integration error iterative methods" to see how small errors compound over repeated updates. Important subjects include stable vs unstable recurrence, timestep sensitivity, error propagation, clamping, damping, and why iterative solvers or simulations can explode without careful formulation.
 
 Why this matters in Blender:
 
@@ -385,9 +414,11 @@ Source directory references:
 
 You should know:
 
-- Topological sorting
-- Cycle detection
-- Dependency-driven evaluation
+**Topological sorting:** Search for "topological sort Kahn algorithm" and "DFS topological sort" to learn the two standard ways to linearize a dependency graph. The important subjects are partial order, indegree counting, DFS post-order, and how valid evaluation order emerges from directed acyclic dependencies.
+
+**Cycle detection:** Search for "cycle detection directed graph DFS" and "strongly connected components overview" to understand how invalid dependency loops are discovered. Important subjects are visited states, recursion stack detection, SCC intuition, and how cycle reporting helps explain invalid graph structures to users and developers.
+
+**Dependency-driven evaluation:** Search for "dependency graph evaluation" and "incremental graph recomputation" to learn how updates are triggered by changed inputs rather than brute-force reevaluation. Focus on dirty propagation, evaluation scheduling, cached results, and the difference between building dependency relations and executing them.
 
 Why this matters in Blender:
 
@@ -401,10 +432,13 @@ Why this matters in Blender:
 
 You should know:
 
-- Topology traversal strategies
-- Edge loop and edge ring detection
-- Subdivision logic
-- Boolean and remeshing fundamentals
+**Topology traversal strategies:** Search for "mesh adjacency traversal" and "half-edge traversal" to learn how algorithms walk from one element to neighboring elements efficiently. Important subjects are vertex-edge-face adjacency, iterator patterns, local neighborhood queries, and how traversal choice affects performance and correctness.
+
+**Edge loop and edge ring detection:** Search for "edge loop edge ring mesh" and study examples in quad-dominant meshes until the pattern becomes visually obvious. The important subjects are opposite-edge traversal in quads, poles and termination cases, manifold assumptions, and why loops/rings matter for selection and modeling tools.
+
+**Subdivision logic:** Search for "Catmull-Clark subdivision explained" and "Loop subdivision basics" to learn how coarse control cages become smooth surfaces. Focus on refinement rules, limit surfaces, crease handling, vertex repositioning, and how subdivision changes topology as well as geometry.
+
+**Boolean and remeshing fundamentals:** Search for "mesh boolean robustness" and "surface remeshing overview" to understand why these topics are algorithmically difficult. Important subjects are intersection classification, winding or inside-outside tests, topology cleanup, voxel vs surface remeshing, and numerical robustness under imperfect input meshes.
 
 Why this matters in Blender:
 
@@ -418,10 +452,13 @@ Why this matters in Blender:
 
 You should know:
 
-- Bounding volume hierarchy (BVH)
-- KD-tree usage patterns
-- Spatial partitioning and nearest-neighbor queries
-- Ray casting acceleration techniques
+**Bounding volume hierarchy (BVH):** Search for "BVH construction traversal" and "surface area heuristic BVH" to understand how geometry is grouped hierarchically for fast culling. Important subjects are bounding boxes, splitting heuristics, traversal order, leaf size tradeoffs, and refit vs rebuild strategies.
+
+**KD-tree usage patterns:** Search for "KD-tree nearest neighbor" and "KD-tree radius search" to learn where axis-aligned partition trees are still a strong fit. Focus on point set partitioning, nearest and k-nearest queries, balanced vs unbalanced trees, and how KD-trees differ from BVHs in use cases.
+
+**Spatial partitioning and nearest-neighbor queries:** Search for "spatial partitioning data structures" and compare grids, octrees, BVHs, and KD-trees in terms of query type and update cost. Important subjects are partitioning strategy, update overhead, distance metrics, pruning, and choosing the right structure for the query pattern.
+
+**Ray casting acceleration techniques:** Search for "ray casting acceleration structure" and "packet ray traversal" to understand how repeated intersection queries are made practical. Important subjects are broadphase vs narrowphase tests, traversal pruning, coherent rays, and how acceleration structures reduce the number of expensive primitive intersections.
 
 Why this matters in Blender:
 
@@ -435,10 +472,13 @@ Why this matters in Blender:
 
 You should know:
 
-- Rasterization pipeline basics
-- Ray tracing and path tracing foundations
-- Shadow mapping concepts
-- Physically based rendering (PBR) principles
+**Rasterization pipeline basics:** Search for "graphics pipeline vertex fragment rasterization" and "clip space to screen space" to learn how triangles become pixels in real time. Important subjects are vertex processing, clipping, rasterization, interpolation, depth testing, blending, and the order in which GPU stages run.
+
+**Ray tracing and path tracing foundations:** Search for "ray tracing basics" and "path tracing Monte Carlo" to understand the difference between single-ray visibility and stochastic light transport simulation. Focus on primary/secondary rays, recursion, BRDF sampling, noise vs convergence, and why path tracing produces realism at higher computational cost.
+
+**Shadow mapping concepts:** Search for "shadow mapping explained" and "shadow map bias acne peter panning" to learn the standard real-time shadow technique and its tradeoffs. Important subjects are light-space depth maps, comparison sampling, resolution artifacts, bias tuning, and filtering methods such as PCF.
+
+**Physically based rendering (PBR) principles:** Search for "PBR metallic roughness workflow" and "energy conservation BRDF" to understand the material model used by modern renderers. Important subjects are albedo, metallic, roughness, Fresnel, microfacet BRDFs, energy conservation, and the difference between artistic controls and physical meaning.
 
 Why this matters in Blender:
 
@@ -465,11 +505,15 @@ Source directory references:
 
 You should know:
 
-- Vertex buffers and index buffers
-- Shader stages and shader programs
-- Uniforms, storage buffers, and resource binding
-- Framebuffers and render targets
-- Render passes and state changes
+**Vertex buffers and index buffers:** Search for "vertex buffer index buffer graphics" and build a minimal triangle renderer so you can see how mesh data is fed to the GPU. Important subjects are vertex layout, attribute formats, indexed drawing, memory upload, and why index reuse reduces bandwidth.
+
+**Shader stages and shader programs:** Search for "vertex shader fragment shader pipeline" and then expand to geometry, compute, or mesh shading only after the core is clear. Important subjects are programmable stages, stage inputs/outputs, shader linkage, compilation, and how stages cooperate to transform and shade primitives.
+
+**Uniforms, storage buffers, and resource binding:** Search for "uniform buffer vs storage buffer" and "descriptor binding graphics API" to understand how shaders access external data. Focus on binding models, constant vs large structured data, update frequency, alignment rules, and how incorrect binding causes hard-to-debug rendering failures.
+
+**Framebuffers and render targets:** Search for "framebuffer render target graphics" and "offscreen rendering" to understand where rendering results are written before final presentation. Important subjects are color and depth attachments, multisampling, offscreen passes, texture-backed targets, and why render-to-texture is central to modern pipelines.
+
+**Render passes and state changes:** Search for "render pass graphics API" and "pipeline state changes performance" to understand how workloads are grouped and submitted efficiently. Important subjects are batching, state sorting, render pass boundaries, barriers or synchronization concepts, and the performance cost of excessive state churn.
 
 ### 5.2 Rendering Pipelines
 
@@ -479,9 +523,11 @@ You should know:
 
 You should know:
 
-- Forward rendering
-- Deferred rendering
-- Hybrid rendering approaches
+**Forward rendering:** Search for "forward rendering advantages disadvantages" and implement or study a small forward-lit scene first because it is the easiest pipeline to reason about. Important subjects are per-object lighting cost, transparency friendliness, MSAA compatibility, and how shading cost scales with light count.
+
+**Deferred rendering:** Search for "deferred rendering G-buffer" to understand how geometry and lighting are split into separate stages. Important subjects are G-buffer design, screen-space lighting, bandwidth cost, memory usage, transparency limitations, and why deferred rendering excels with many dynamic lights.
+
+**Hybrid rendering approaches:** Search for "hybrid renderer raster ray tracing" and "forward plus clustered lighting" to see how real engines mix ideas rather than staying pure. Focus on when a renderer mixes rasterization with ray tracing, or forward with tiled/clustered lighting, and how those hybrids balance quality, speed, and complexity.
 
 ### 5.3 Shader Languages and Intermediate Forms
 
@@ -491,9 +537,11 @@ You should know:
 
 You should know:
 
-- GLSL basics
-- Metal shading concepts
-- SPIR-V as an intermediate representation concept
+**GLSL basics:** Search for "GLSL tutorial vertex fragment shader" and write a minimal shader pair to understand syntax, inputs, outputs, and built-in variables. Important subjects are shader language types, interpolation qualifiers, texture sampling, coordinate conventions, and compiling/debugging shader code.
+
+**Metal shading concepts:** Search for "Metal Shading Language basics" and compare its resource and stage model to GLSL so you understand the backend translation problem. Important subjects are argument buffers or resource bindings, stage functions, language syntax differences, and Apple-platform pipeline conventions.
+
+**SPIR-V as an intermediate representation concept:** Search for "SPIR-V overview" and "shader IR compilation pipeline" to understand why engines often target an intermediate form instead of a source language directly. Important subjects are IR design, cross-compilation, validation, optimization passes, and how an intermediate representation helps support multiple backends from one source pipeline.
 
 Why this matters in Blender:
 
@@ -521,9 +569,11 @@ Source directory references:
 
 You should know:
 
-- Vertex, edge, loop, and face connectivity
-- Efficient topology edits
-- Euler-style topology operations
+**Vertex, edge, loop, and face connectivity:** Search for "half-edge mesh data structure" and "BMesh loops explained" to understand how editable mesh systems represent neighborhood relationships explicitly. Important subjects are adjacency, loop vs edge roles, face boundaries, and why connectivity representation matters more than raw positions in edit-mode tools.
+
+**Efficient topology edits:** Search for "editable mesh operations data structure" and study how split, collapse, dissolve, and extrude can be implemented without rebuilding the whole mesh. Important subjects are local updates, invariant preservation, element reuse, and keeping adjacency consistent after every edit.
+
+**Euler-style topology operations:** Search for "Euler operators mesh topology" to learn the classical primitive operations from which more complex modeling commands are built. Important subjects are make/kill vertex-edge-face style operations, topological validity, and how complex edits can be decomposed into a safe sequence of primitive steps.
 
 Why this matters in Blender:
 
@@ -537,9 +587,11 @@ Why this matters in Blender:
 
 You should know:
 
-- Layered storage for per-element data
-- Dynamic schemas for UVs, colors, normals, and custom attributes
-- Data propagation rules across operations
+**Layered storage for per-element data:** Search for "mesh attribute layers" and "per-vertex per-face-corner data" to understand how geometry stores multiple parallel attribute channels. Important subjects are attribute domains, storage indirection, memory ownership, and why not every attribute belongs to the same element type.
+
+**Dynamic schemas for UVs, colors, normals, and custom attributes:** Search for "dynamic attribute schema geometry nodes" and study how new named attributes can be added without changing the core struct definition. Important subjects are schema flexibility, typed attribute storage, domain-specific attributes, and how named layers are discovered and managed.
+
+**Data propagation rules across operations:** Search for "attribute propagation mesh operations" and think through what should happen to UVs, normals, and generic attributes when topology changes. Important subjects are interpolation, copying vs recomputing, domain adaptation, conflict resolution, and how procedural systems preserve semantic data through edits.
 
 Why this matters in Blender:
 
@@ -553,9 +605,11 @@ Why this matters in Blender:
 
 You should know:
 
-- Node, socket, and link representations
-- Typed connections and validation
-- Execution context and evaluation metadata
+**Node, socket, and link representations:** Search for "node graph data model" and sketch a minimal in-memory representation of nodes, sockets, and links before reading production code. Important subjects are graph ownership, stable IDs, connection endpoints, and how serialization stores graph structure.
+
+**Typed connections and validation:** Search for "node graph type checking" and "graph validation rules" to learn how a graph rejects invalid links before execution. Important subjects are socket compatibility, implicit conversions, validation passes, and distinguishing authoring-time errors from execution-time errors.
+
+**Execution context and evaluation metadata:** Search for "execution context graph evaluation" and "node metadata scheduling" to understand what extra information an evaluator needs beyond raw graph structure. Important subjects are evaluation flags, caching metadata, dirty state, context objects, and runtime information attached to nodes or sockets.
 
 Why this matters in Blender:
 
@@ -569,9 +623,11 @@ Why this matters in Blender:
 
 You should know:
 
-- Tree construction tradeoffs
-- Query performance characteristics
-- Update and rebuild strategies
+**Tree construction tradeoffs:** Search for "BVH build quality vs speed" and "spatial tree construction heuristics" to understand why the fastest builder does not always produce the fastest queries. Important subjects are build time, tree quality, split heuristics, leaf size, and the runtime consequences of those choices.
+
+**Query performance characteristics:** Search for "nearest neighbor complexity BVH KD-tree" and compare common query types such as ray hits, nearest neighbor, overlap, and range search. Important subjects are asymptotic complexity, pruning efficiency, coherence, and how data distribution changes practical performance.
+
+**Update and rebuild strategies:** Search for "BVH refit vs rebuild" and "dynamic spatial acceleration structure" to learn how mutable scenes complicate tree maintenance. Important subjects are full rebuilds, incremental refits, partial updates, scene coherence, and the quality degradation that can accumulate if updates are too cheap for too long.
 
 Why this matters in Blender:
 
@@ -598,10 +654,13 @@ Source directory references:
 
 You should know:
 
-- Runtime type metadata
-- Property descriptors and registration
-- Introspection and dynamic access patterns
-- API exposure from native code to scripting layers
+**Runtime type metadata:** Search for "reflection runtime type metadata" and study how a program can describe its own types without hardcoding every use site. Important subjects are type descriptors, field metadata, enum/property metadata, and how runtime systems query this information to build tools.
+
+**Property descriptors and registration:** Search for "property descriptor system" and "registered properties reflection" to learn how properties are declared once and reused everywhere. Important subjects are property names, types, ranges, defaults, callbacks, registration tables, and how descriptors drive UI, serialization, and scripting.
+
+**Introspection and dynamic access patterns:** Search for "introspection dynamic property access" and practice writing code that reads or writes fields by descriptor instead of direct struct access. Important subjects are lookup by name or identifier, reflective iteration over properties, dynamic setters/getters, and the tradeoff between flexibility and static safety.
+
+**API exposure from native code to scripting layers:** Search for "binding native code to Python" and "reflection driven API generation" to understand how C/C++ data becomes script-visible. Important subjects are marshaling, lifetime ownership, reference policies, method/property exposure, and how metadata can reduce manual wrapper code.
 
 Why this matters in Blender:
 
@@ -615,10 +674,13 @@ Why this matters in Blender:
 
 You should know:
 
-- Struct layout awareness
-- Version compatibility strategies
-- Pointer remapping and loading logic
-- Backward compatibility constraints
+**Struct layout awareness:** Search for "binary struct layout padding alignment" and "ABI struct layout" to understand why binary formats depend on exact data layout rules. Important subjects are padding, alignment, field ordering, fixed-size types, and why even a small layout change can break serialized compatibility.
+
+**Version compatibility strategies:** Search for "file format version migration" and "backward compatible binary format" to learn how old data is upgraded safely. Important subjects are schema evolution, version tags, migration code, optional fields, and strategies for preserving compatibility while the internal runtime model changes.
+
+**Pointer remapping and loading logic:** Search for "pointer remapping serialized file load" and "relocation table binary loader" to understand how in-memory references are reconstructed after reading raw bytes. Important subjects are address independence, ID mapping, relocation, deferred fix-up passes, and how loaders rebuild object graphs safely.
+
+**Backward compatibility constraints:** Search for "backward compatibility file format engineering" and study why format decisions become long-lived obligations. Important subjects are compatibility guarantees, migration cost, deprecated fields, round-tripping old files, and how engineering tradeoffs change when legacy support must be preserved for years.
 
 Why this matters in Blender:
 

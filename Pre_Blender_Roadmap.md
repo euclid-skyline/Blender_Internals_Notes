@@ -1,6 +1,14 @@
 # Pre-Blender Knowledge Roadmap<!-- omit from toc -->
 
-This document describes the core pre-Blender knowledge needed before contributing to Blender source code. Think of it as the technical backpack you carry before climbing Blender's codebase.
+This document describes the core pre-Blender knowledge needed before contributing to Blender source code. Think of it as the technical backpack you carry before climbing Blender's codebase. Below is the complete pre‑Blender mastery roadmap:
+
+- Application Architecture
+- Design Patterns
+- Mathematics
+- Algorithms
+- 3D Engine Fundamentals
+- Data Structures
+- Compiler/Reflection Concepts
 
 ## Table of Contents<!-- omit from toc -->
 
@@ -193,6 +201,14 @@ Why this matters in Blender:
 - Depsgraph is central to animation, constraints, modifiers, and scene updates.
 - Bugs in dependency handling often appear as stale data, wrong evaluation order, or update storms.
 
+First search queries cheat sheet:
+
+- "scene graph local vs world transform"
+- "Blender depsgraph dirty tags"
+- "data-oriented design cache locality"
+- "node graph lazy evaluation"
+- "RNA registration architecture"
+
 ---
 
 ## 2. Design Patterns
@@ -215,9 +231,11 @@ Source directory references:
 
 Common use:
 
-- Modifiers
-- Constraints
-- Shader and geometry operations
+**Modifiers:** Start by searching for "strategy pattern in C" and "Blender modifier type callbacks" so you can see how multiple modifier implementations conform to one interface while differing in behavior. Important subjects include function-pointer interfaces, per-type execution callbacks, and runtime dispatch based on modifier type.
+
+**Constraints:** Search for "constraint solver architecture" and "runtime dispatch constraints" to understand how each constraint behaves as a swappable strategy over a shared evaluation pipeline. Important subjects include solver step interfaces, dependency ordering, and consistent data flow into type-specific solve functions.
+
+**Shader and geometry operations:** Search for "node operation dispatch" and "pluggable operations architecture" to learn how operation families expose a common contract while allowing specialized implementations. Important subjects include operation abstraction boundaries, data contract validation, and specialization without changing calling code.
 
 Concept:
 
@@ -231,9 +249,11 @@ Concept:
 
 Common use:
 
-- Creating RNA types
-- Node instance creation
-- Operator and type registration flows
+**Creating RNA types:** Search for "factory pattern type registration" and "RNA define struct property" to learn how type metadata and constructors are centralized. Important subjects include registry maps, type descriptors, and creation by runtime identifier.
+
+**Node instance creation:** Search for "node factory registry" and "create node by id" to understand how node classes are instantiated from type keys rather than direct class calls. Important subjects include factory lookup, initialization hooks, and separation between type definition and instance allocation.
+
+**Operator and type registration flows:** Search for "operator registration lifecycle" and "factory registration C" to see how systems discover and build runtime objects from registered definitions. Important subjects include startup registration order, constructor tables, and creation through centralized entry points.
 
 Concept:
 
@@ -247,8 +267,9 @@ Concept:
 
 Common use:
 
-- Traversing graph-like structures
-- Performing operations without embedding logic in every node type
+**Traversing graph-like structures:** Search for "visitor pattern graph traversal" and "separate traversal from operation" to learn how one traversal can support many operations. Important subjects include traversal interfaces, pre/post visit hooks, and reusable walk logic across multiple analyses.
+
+**Performing operations without embedding logic in every node type:** Search for "double dispatch visitor" and "extensible operations without modifying classes" to understand how new operations can be added safely. Important subjects include operation decoupling, open/closed principle, and avoiding node-type bloat.
 
 Concept:
 
@@ -262,8 +283,9 @@ Concept:
 
 Common use:
 
-- Operator execution model
-- Undo and redo stacks
+**Operator execution model:** Search for "command pattern execute undo" and "invocation lifecycle command" to see how actions are represented as units with repeatable behavior. Important subjects include execute/cancel/redo semantics, command payload design, and deterministic side effects.
+
+**Undo and redo stacks:** Search for "undo redo command stack" and "transactional editing model" to learn how reversible operations are organized. Important subjects include inverse operations, state snapshots vs diffs, stack invalidation rules, and history management.
 
 Concept:
 
@@ -277,8 +299,9 @@ Concept:
 
 Common use:
 
-- Dependency update signaling
-- UI redraw and notification systems
+**Dependency update signaling:** Search for "observer pattern dependency graph" and "publish subscribe updates" to understand how changes propagate through connected systems. Important subjects include event sources, subscriber registration, and minimizing redundant notifications.
+
+**UI redraw and notification systems:** Search for "event notifier UI redraw" and "reactive UI invalidation" to learn how state changes trigger presentation updates. Important subjects include invalidation granularity, event channels, and decoupling model updates from rendering/UI layers.
 
 Concept:
 
@@ -292,8 +315,9 @@ Concept:
 
 Common use:
 
-- Defining RNA properties in steps
-- Programmatic construction of complex node trees
+**Defining RNA properties in steps:** Search for "builder pattern staged configuration" and "RNA property definition API" to learn how complex definitions become readable and safe when constructed incrementally. Important subjects include required vs optional fields, fluent/staged configuration, and validation during build steps.
+
+**Programmatic construction of complex node trees:** Search for "builder for graph construction" and "construct node graph programmatically" to understand how many related objects can be assembled predictably. Important subjects include staged object assembly, intermediate invariants, and reducing setup mistakes through explicit build phases.
 
 Concept:
 
@@ -307,13 +331,23 @@ Concept:
 
 Common use:
 
-- Geometry Nodes
-- Shader graph execution
-- Compositor pipelines
+**Geometry Nodes:** Search for "dataflow graph evaluation geometry nodes" and "attribute flow graph" to learn how data transforms through connected operations. Important subjects include dependency-driven execution, field propagation, and node-level data contracts.
+
+**Shader graph execution:** Search for "shader graph dataflow" and "node graph compilation" to understand how graph structure maps to executable shading logic. Important subjects include typed links, graph optimization, and mapping graph semantics to backend shader code.
+
+**Compositor pipelines:** Search for "image compositor node pipeline" and "graph-based image processing" to see dataflow in screen-space processing chains. Important subjects include buffer lifetimes, pass ordering, and incremental recomputation in graph-based image workflows.
 
 Concept:
 
 - Data moves through connected processing units where links define flow and dependencies.
+
+First search queries cheat sheet:
+
+- "strategy pattern C function pointers"
+- "factory registry runtime types"
+- "visitor pattern graph traversal"
+- "command pattern undo redo"
+- "observer notifier UI redraw"
 
 ---
 
@@ -391,6 +425,14 @@ You should know:
 Why this matters in Blender:
 
 - Animation curves, drivers, constraints, and simulation steps require numerically stable implementations.
+
+First search queries cheat sheet:
+
+- "linear algebra for 3D graphics"
+- "ray triangle intersection Moller Trumbore"
+- "barycentric coordinates intuition"
+- "floating point precision pitfalls"
+- "slerp quaternion interpolation"
 
 ---
 
@@ -484,6 +526,14 @@ Why this matters in Blender:
 
 - Eevee and Cycles use different but related rendering models that share core graphics ideas.
 
+First search queries cheat sheet:
+
+- "topological sort Kahn algorithm"
+- "mesh boolean robustness"
+- "BVH construction traversal SAH"
+- "path tracing Monte Carlo basics"
+- "PBR metallic roughness BRDF"
+
 ---
 
 ## 5. 3D Engine Fundamentals
@@ -546,6 +596,14 @@ You should know:
 Why this matters in Blender:
 
 - Blender's GPU layer abstracts multiple backends, but backend constraints and shader translation details still affect engine behavior.
+
+First search queries cheat sheet:
+
+- "vertex buffer index buffer explained"
+- "forward vs deferred rendering"
+- "render pass state changes performance"
+- "GLSL to SPIR-V pipeline"
+- "Metal shader resource binding"
 
 ---
 
@@ -633,6 +691,14 @@ Why this matters in Blender:
 
 - Spatial acceleration structures appear throughout rendering, physics, and geometry queries.
 
+First search queries cheat sheet:
+
+- "half-edge mesh data structure"
+- "Euler operators mesh editing"
+- "attribute domain propagation geometry"
+- "node graph validation typed sockets"
+- "BVH refit vs rebuild"
+
 ---
 
 ## 7. Compiler and Reflection Concepts
@@ -685,3 +751,11 @@ You should know:
 Why this matters in Blender:
 
 - Blender's file format and data migration behavior depend on stable serialization contracts.
+
+First search queries cheat sheet:
+
+- "RNA reflection metadata Blender"
+- "property descriptor registration pattern"
+- "binary struct layout padding alignment"
+- "pointer remapping in binary loader"
+- "backward compatible file format migration"

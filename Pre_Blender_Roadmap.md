@@ -4,6 +4,7 @@ This document describes the core pre-Blender knowledge needed before contributin
 
 ## Table of Contents<!-- omit from toc -->
 
+- [Recommended Reading Order](#recommended-reading-order)
 - [1. Application Architecture](#1-application-architecture)
   - [1.1 Scene Graph Architecture](#11-scene-graph-architecture)
   - [1.2 Data-Oriented Design (DOD)](#12-data-oriented-design-dod)
@@ -42,6 +43,20 @@ This document describes the core pre-Blender knowledge needed before contributin
 
 ---
 
+## Recommended Reading Order
+
+Use this order to reduce context switching and build concepts in layers:
+
+1. Application Architecture: Build your mental map of how Blender evaluates and coordinates systems.
+2. Data Structures: Learn how core data is represented before reading algorithms that mutate it.
+3. Mathematics: Refresh the math used by transforms, geometry, and evaluation code.
+4. Algorithms: Map core algorithmic patterns to depsgraph, mesh, and rendering workloads.
+5. 3D Engine Fundamentals: Understand GPU and pipeline concepts before deep rendering internals.
+6. Compiler and Reflection Concepts: Learn DNA/RNA to understand data definition, IO, and API exposure.
+7. Design Patterns: Revisit patterns to recognize recurring architecture choices in production code.
+
+---
+
 ## 1. Application Architecture
 
 Blender is not just a single-purpose 3D tool. It combines multiple architectures in one codebase:
@@ -58,6 +73,14 @@ Blender is not just a single-purpose 3D tool. It combines multiple architectures
 - Multi-backend GPU abstraction layer
 
 To navigate Blender source effectively, you should be comfortable with the architectural concepts below.
+
+Source directory references:
+
+- source/blender/blenkernel
+- source/blender/depsgraph
+- source/blender/nodes
+- source/blender/windowmanager
+- source/blender/editors
 
 ### 1.1 Scene Graph Architecture
 
@@ -157,6 +180,14 @@ Why this matters in Blender:
 ## 2. Design Patterns
 
 Blender is largely written in C and C++, but many object-oriented design patterns are implemented through structs, function pointers, and registration systems.
+
+Source directory references:
+
+- source/blender/blenkernel
+- source/blender/modifiers
+- source/blender/nodes
+- source/blender/windowmanager
+- source/blender/editors
 
 ### 2.1 Strategy Pattern
 
@@ -272,6 +303,13 @@ Concept:
 
 Strong math fundamentals are mandatory for graphics, simulation, and animation code.
 
+Source directory references:
+
+- source/blender/blenlib
+- source/blender/blenkernel
+- source/blender/geometry
+- source/blender/draw
+
 ### 3.1 Linear Algebra
 
 - What it is: The mathematical foundation for vectors, matrices, rotations, and coordinate space conversions.
@@ -330,6 +368,14 @@ Why this matters in Blender:
 ## 4. Algorithms
 
 Blender combines classic algorithms with domain-specific optimizations.
+
+Source directory references:
+
+- source/blender/depsgraph
+- source/blender/bmesh
+- source/blender/modifiers
+- source/blender/geometry
+- source/blender/render
 
 ### 4.1 Graph Algorithms
 
@@ -404,6 +450,13 @@ Why this matters in Blender:
 
 Before reading GPU and renderer internals, build a solid graphics pipeline foundation.
 
+Source directory references:
+
+- source/blender/gpu
+- source/blender/draw
+- source/blender/render
+- intern/cycles
+
 ### 5.1 GPU Concepts
 
 - What it is: Core concepts for how graphics hardware processes geometry and shading workloads.
@@ -451,6 +504,14 @@ Why this matters in Blender:
 ## 6. Data Structures
 
 Blender's performance and flexibility depend on choosing the right structures for geometry and runtime systems.
+
+Source directory references:
+
+- source/blender/bmesh
+- source/blender/makesdna
+- source/blender/blenkernel
+- source/blender/nodes
+- source/blender/blenloader
 
 ### 6.1 Half-Edge and Editable Mesh Models (BMesh Concepts)
 
@@ -521,6 +582,13 @@ Why this matters in Blender:
 ## 7. Compiler and Reflection Concepts
 
 Blender's DNA/RNA pipeline combines reflection-like metadata with binary file compatibility concerns.
+
+Source directory references:
+
+- source/blender/makesdna
+- source/blender/makesrna
+- source/blender/blenloader
+- source/blender/python
 
 ### 7.1 Reflection Concepts (RNA)
 

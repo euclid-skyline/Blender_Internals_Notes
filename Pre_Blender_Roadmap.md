@@ -1,6 +1,12 @@
 # Pre-Blender Knowledge Roadmap<!-- omit from toc -->
 
-This document describes the core pre-Blender knowledge needed before contributing to Blender source code. Think of it as the technical backpack you carry before climbing Blender's codebase. Below is the complete pre‑Blender mastery roadmap:
+This roadmap is for developers who want to contribute to Blender source code with strong technical foundations, not just surface-level familiarity. It defines the knowledge you should build before deep code reading so Blender systems feel understandable rather than overwhelming.
+
+Use this document as a preparation path: start with architecture and data structures, strengthen the math and algorithms that power Blender internals, then connect those concepts to rendering, GPU workflows, and DNA/RNA-driven reflection and serialization. Each section is designed to help you move from theory to practical code navigation.
+
+By the time you finish this roadmap, you should be able to read Blender code with clear mental models, search for the right concepts efficiently, and identify where a feature lives in the codebase before implementing or debugging changes.
+
+This pre-Blender mastery roadmap is organized into seven core domains:
 
 - Application Architecture
 - Design Patterns

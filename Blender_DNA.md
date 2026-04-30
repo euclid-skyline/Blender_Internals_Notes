@@ -709,6 +709,23 @@ classDiagram
 **Q: Why does every `.blend` file contain a full copy of the SDNA?**  
 So any version of Blender can open any `.blend` file. The loader compares the file's embedded SDNA to the running binary's SDNA and reconstructs each struct accordingly, without needing an external schema file.
 
+**Q: Does that mean even an empty `.blend` file is at least `DNAlen` bytes in size?**  
+Yes. A `.blend` file is a sequence of `BHead` blocks and every valid file must include a `DNA1` block carrying the full SDNA blob, regardless of whether it contains any objects, scenes, or other data-blocks:
+
+```text
+[12-byte file header: "BLENDER" + ptr-size + endian + version]
+[BHead code=REND ...]        ← render info
+[BHead code=GLOB ...]        ← FileGlobal
+[BHead code=DNA1, len=DNAlen] ← full SDNA blob (identical to DNAstr[])
+[BHead code=ENDB, len=0]     ← end-of-file marker
+```
+
+The minimum floor size of any valid `.blend` file is therefore:
+
+$$\text{file size} \geq 12 + \text{sizeof}(BHead) + DNAlen + \text{sizeof}(BHead)$$
+
+On Blender 5.1.1 specifically, `dna.cc` contains 6,647 data lines × 20 bytes per line, giving `DNAlen = 132,940 bytes` (~130 KB). So even a freshly created and immediately saved scene with no objects will be at least that large — purely from the SDNA. The `DNA1` block is not optional; `blenloader` requires it to decode any other block in the file, so Blender writes it unconditionally. This is the price paid for complete self-sufficiency: a `.blend` file is independently decodable by any Blender version without external schema information.
+
 **Q: Why can't DNA headers use `#define` for array sizes?**  
 `makesdna` is a simple parser that does not evaluate preprocessor directives. Array sizes must be literal integer constants so `makesdna` can compute the exact byte size of each field.
 

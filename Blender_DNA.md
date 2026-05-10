@@ -15,12 +15,15 @@
   - [3.2 The `SDNA` binary format](#32-the-sdna-binary-format)
   - [3.3 How structs are included](#33-how-structs-are-included)
   - [3.4 How `SRC_DNA_INC` is resolved at build time](#34-how-src_dna_inc-is-resolved-at-build-time)
+  - [Diagram 1: DNA build-time pipeline (flowchart)](#diagram-1-dna-build-time-pipeline-flowchart)
 - [4) Runtime: the `SDNA` struct](#4-runtime-the-sdna-struct)
   - [4.1 `SDNA_Struct` and `SDNA_StructMember`](#41-sdna_struct-and-sdna_structmember)
+  - [Diagram 2: SDNA binary layout (class diagram)](#diagram-2-sdna-binary-layout-class-diagram)
   - [4.2 Startup initialization – `DNA_sdna_current_init()`](#42-startup-initialization--dna_sdna_current_init)
 - [5) The `ID` struct – the common header of all data-blocks](#5-the-id-struct--the-common-header-of-all-data-blocks)
   - [5.1 Full `ID` definition](#51-full-id-definition)
   - [5.2 Data-block naming convention](#52-data-block-naming-convention)
+  - [Diagram 3: DNA struct inheritance pattern (class diagram)](#diagram-3-dna-struct-inheritance-pattern-class-diagram)
 - [6) Design constraints for DNA structs](#6-design-constraints-for-dna-structs)
   - [6.1 Alignment rules](#61-alignment-rules)
   - [6.2 Prohibited and restricted constructs](#62-prohibited-and-restricted-constructs)
@@ -31,15 +34,11 @@
   - [7.3 `DNA_struct_reconstruct()`](#73-dna_struct_reconstruct)
   - [7.4 `dna_rename_defs.h` – alias-based rename tracking](#74-dna_rename_defsh--alias-based-rename-tracking)
   - [7.5 `versioning_dna.cc` – on-load DNA patching](#75-versioning_dnacc--on-load-dna-patching)
+  - [Diagram 4: `.blend` file load path with SDNA versioning (flowchart)](#diagram-4-blend-file-load-path-with-sdna-versioning-flowchart)
 - [8) Key `DNA_*_types.h` headers and what to look for](#8-key-dna__typesh-headers-and-what-to-look-for)
 - [9) `CustomData` – per-element attribute storage](#9-customdata--per-element-attribute-storage)
-- [10) Diagrams](#10-diagrams)
-  - [10.1 DNA build-time pipeline (flowchart)](#101-dna-build-time-pipeline-flowchart)
-  - [10.2 SDNA binary layout (class diagram)](#102-sdna-binary-layout-class-diagram)
-  - [10.3 `.blend` file load path with SDNA versioning (flowchart)](#103-blend-file-load-path-with-sdna-versioning-flowchart)
-  - [10.4 DNA struct inheritance pattern (class diagram)](#104-dna-struct-inheritance-pattern-class-diagram)
-- [11) Short answers](#11-short-answers)
-- [12) Source-level conclusion](#12-source-level-conclusion)
+- [10) Short answers](#10-short-answers)
+- [11) Source-level conclusion](#11-source-level-conclusion)
 
 ---
 
@@ -209,6 +208,20 @@ This `foreach` loop produces two **build-time generated** files in `${CMAKE_CURR
 
 Adding a new DNA header therefore requires **two steps**: (1) add it to `SRC_DNA_INC` in `source/blender/CMakeLists.txt`, (2) re-run CMake — the generated files and `makesdna` will pick it up automatically on the next build.
 
+### Diagram 1: DNA build-time pipeline (flowchart)
+
+```mermaid
+flowchart TD
+  A["CMake build starts"] --> B["makesdna tool is compiled<br/>(makesdna.cc)"]
+  B --> C["makesdna reads all DNA_*_types.h headers<br/>(listed in dna_includes_as_strings.h)"]
+  C --> D["Parses struct definitions<br/>Computes field sizes and alignments<br/>for 32-bit and 64-bit pointer sizes"]
+  D --> E["Applies rename aliases<br/>from dna_rename_defs.h"]
+  E --> F["Encodes SDNA blob:<br/>SDNA -> NAME -> TYPE -> TLEN -> STRC sections"]
+  F --> G["Writes dna.cc<br/>containing DNAstr[] and DNAlen"]
+  G --> H["Blender executable compiled;<br/>DNAstr[] linked in as a symbol"]
+  H --> I["Every .blend file written by this binary<br/>also embeds a copy of DNAstr[]"]
+```
+
 ---
 
 ## 4) Runtime: the `SDNA` struct
@@ -255,7 +268,61 @@ struct SDNA {
 };
 ```
 
+`SDNA` variables (summary):
+
+| Variable            | Type             | Meaning                                                                     |
+| ------------------- | ---------------- | --------------------------------------------------------------------------- |
+| `data`              | `const char *`   | Pointer to the full encoded SDNA byte stream.                               |
+| `data_size`         | `int`            | Size in bytes of the `data` blob.                                           |
+| `data_alloc`        | `bool`           | Ownership flag: whether this `SDNA` instance owns/frees `data`.             |
+| `pointer_size`      | `int`            | Pointer width for this SDNA context (`4` or `8`).                           |
+| `types_num`         | `int`            | Number of type names in `types[]`.                                          |
+| `types`             | `const char **`  | Type-name table (e.g. `int`, `Object`, `Mesh`).                             |
+| `types_size`        | `short *`        | Size table parallel to `types[]` (`sizeof` for each type).                  |
+| `types_alignment`   | `int *`          | Alignment table parallel to `types[]`.                                      |
+| `structs_num`       | `int`            | Number of struct definitions in `structs[]`.                                |
+| `structs`           | `SDNA_Struct **` | Array of decoded struct definitions, one entry per struct.                  |
+| `members_num`       | `int`            | Number of member-name entries in `members[]`.                               |
+| `members`           | `const char **`  | Member-name table (e.g. `*next`, `loc[3]`).                                 |
+| `members_array_num` | `short *`        | Parsed element count for each member entry (e.g. `loc[3]` -> `3`).          |
+| `alias.types`       | `const char **`  | Alias table for renamed type names (old name -> current name resolution).   |
+| `alias.members`     | `const char **`  | Alias table for renamed member names (old name -> current name resolution). |
+
 `SDNA` is purely a **lookup table**: given a struct name, you can find its `SDNA_Struct`; given that, you can enumerate every member's type and name. Offsets are **not** stored directly — they are computed on demand from sizes and alignment rules.
+
+### Diagram 2: SDNA binary layout (class diagram)
+
+```mermaid
+classDiagram
+  class SDNA {
+    +const char* data
+    +int data_size
+    +int pointer_size
+    +int types_num
+    +const char** types
+    +short* types_size
+    +int structs_num
+    +SDNA_Struct** structs
+    +int members_num
+    +const char** members
+    +short* members_array_num
+    +alias : types[] members[]
+  }
+
+  class SDNA_Struct {
+    +short type_index
+    +short members_num
+    +SDNA_StructMember members[]
+  }
+
+  class SDNA_StructMember {
+    +short type_index
+    +short member_index
+  }
+
+  SDNA "1" --> "0..*" SDNA_Struct : structs[]
+  SDNA_Struct "1" --> "1..*" SDNA_StructMember : members[]
+```
 
 ### 4.2 Startup initialization – `DNA_sdna_current_init()`
 
@@ -347,6 +414,76 @@ The `name` field uses a **two-byte type prefix** drawn from `DNA_ID_enums.h`:
 | `GR`   | Collection |
 
 So an object named *Suzanne* is stored as `"OBSuzanne"`. The prefix ensures uniqueness across type namespaces while still allowing a global name lookup without knowing the type in advance.
+
+### Diagram 3: DNA struct inheritance pattern (class diagram)
+
+```mermaid
+classDiagram
+  class ID {
+    +void* next
+    +void* prev
+    +Library* lib
+    +char name[258]
+    +short flag
+    +int us
+    +unsigned int recalc
+    +IDProperty* properties
+    +ID* orig_id
+  }
+
+  class Object {
+    +ID id
+    +ObjectType type
+    +float loc[3]
+    +float rot[3]
+    +float scale[3]
+    +ListBase modifiers
+    +ListBase constraints
+    +void* data
+    +ObjectRuntime* runtime
+  }
+
+  class Mesh {
+    +ID id
+    +int verts_num
+    +int edges_num
+    +int faces_num
+    +int corners_num
+    +CustomData vert_data
+    +CustomData edge_data
+    +CustomData face_data
+    +CustomData corner_data
+    +MeshRuntime* runtime
+  }
+
+  class Scene {
+    +ID id
+    +Object* camera
+    +World* world
+    +ListBase view_layers
+    +RenderData r
+    +ToolSettings* toolsettings
+  }
+
+  class ModifierData {
+    +ModifierData* next
+    +ModifierData* prev
+    +int type
+    +char name[64]
+  }
+
+  class SubsurfModifierData {
+    +ModifierData modifier
+    +short levels
+    +short renderLevels
+  }
+
+  ID <|-- Object : first member
+  ID <|-- Mesh : first member
+  ID <|-- Scene : first member
+  ModifierData <|-- SubsurfModifierData : first member
+  Object --> ModifierData : modifiers ListBase
+```
 
 ---
 
@@ -512,6 +649,24 @@ void blo_do_versions_dna(SDNA *sdna, const int versionfile, const int subversion
 
 This patches the *file*'s SDNA in memory before the comparison/reconstruction phase runs. The effect is that old struct/member names in the file are silently remapped to current names, so the normal `DNA_struct_get_compareflags` + `DNA_struct_reconstruct` path handles the rest.
 
+### Diagram 4: `.blend` file load path with SDNA versioning (flowchart)
+
+```mermaid
+flowchart TD
+  A["Open .blend file"] --> B["blenloader reads file header<br/>and locates embedded SDNA block"]
+  B --> C["Decode file's SDNA<br/>DNA_sdna_from_data(file_sdna_blob)"]
+  C --> D["blo_do_versions_dna<br/>Patches file SDNA for very old renames"]
+  D --> E["DNA_struct_get_compareflags<br/>Compares file SDNA vs binary SDNA<br/>for every struct"]
+  E --> F{Struct compare flag?}
+  F -- SDNA_CMP_EQUAL --> G["Direct memcpy<br/>into new memory"]
+  F -- SDNA_CMP_NOT_EQUAL --> H["DNA_struct_reconstruct<br/>Field-by-field copy with type conversion<br/>Zero-fill new fields"]
+  F -- SDNA_CMP_REMOVED --> I["Skip / discard<br/>(struct no longer exists)"]
+  G --> J["Data-block fully loaded"]
+  H --> J
+  I --> J
+  J --> K["blenloader fixup pass:<br/>Resolves ID pointers (library linking)<br/>Runs BKE versioning for data migration"]
+```
+
 ---
 
 ## 8) Key `DNA_*_types.h` headers and what to look for
@@ -564,147 +719,7 @@ Blender's Attribute API (`BKE_attribute.hh`) builds on top of `CustomData` to pr
 
 ---
 
-## 10) Diagrams
-
-### 10.1 DNA build-time pipeline (flowchart)
-
-```mermaid
-flowchart TD
-    A["CMake build starts"] --> B["makesdna tool is compiled<br/>(makesdna.cc)"]
-    B --> C["makesdna reads all DNA_*_types.h headers<br/>(listed in dna_includes_as_strings.h)"]
-    C --> D["Parses struct definitions<br/>Computes field sizes and alignments<br/>for 32-bit and 64-bit pointer sizes"]
-    D --> E["Applies rename aliases<br/>from dna_rename_defs.h"]
-    E --> F["Encodes SDNA blob:<br/>SDNA → NAME → TYPE → TLEN → STRC sections"]
-    F --> G["Writes dna.cc<br/>containing DNAstr[] and DNAlen"]
-    G --> H["Blender executable compiled;<br/>DNAstr[] linked in as a symbol"]
-    H --> I["Every .blend file written by this binary<br/>also embeds a copy of DNAstr[]"]
-```
-
-### 10.2 SDNA binary layout (class diagram)
-
-```mermaid
-classDiagram
-    class SDNA {
-        +const char* data
-        +int data_size
-        +int pointer_size
-        +int types_num
-        +const char** types
-        +short* types_size
-        +int structs_num
-        +SDNA_Struct** structs
-        +int members_num
-        +const char** members
-        +short* members_array_num
-        +alias : types[] members[]
-    }
-
-    class SDNA_Struct {
-        +short type_index
-        +short members_num
-        +SDNA_StructMember members[]
-    }
-
-    class SDNA_StructMember {
-        +short type_index
-        +short member_index
-    }
-
-    SDNA "1" --> "0..*" SDNA_Struct : structs[]
-    SDNA_Struct "1" --> "1..*" SDNA_StructMember : members[]
-```
-
-### 10.3 `.blend` file load path with SDNA versioning (flowchart)
-
-```mermaid
-flowchart TD
-    A["Open .blend file"] --> B["blenloader reads file header<br/>and locates embedded SDNA block"]
-    B --> C["Decode file's SDNA<br/>DNA_sdna_from_data(file_sdna_blob)"]
-    C --> D["blo_do_versions_dna<br/>Patches file SDNA for very old renames"]
-    D --> E["DNA_struct_get_compareflags<br/>Compares file SDNA vs binary SDNA<br/>for every struct"]
-    E --> F{Struct compare flag?}
-    F -- SDNA_CMP_EQUAL --> G["Direct memcpy<br/>into new memory"]
-    F -- SDNA_CMP_NOT_EQUAL --> H["DNA_struct_reconstruct<br/>Field-by-field copy with type conversion<br/>Zero-fill new fields"]
-    F -- SDNA_CMP_REMOVED --> I["Skip / discard<br/>(struct no longer exists)"]
-    G --> J["Data-block fully loaded"]
-    H --> J
-    I --> J
-    J --> K["blenloader fixup pass:<br/>Resolves ID pointers (library linking)<br/>Runs BKE versioning for data migration"]
-```
-
-### 10.4 DNA struct inheritance pattern (class diagram)
-
-```mermaid
-classDiagram
-    class ID {
-        +void* next
-        +void* prev
-        +Library* lib
-        +char name[258]
-        +short flag
-        +int us
-        +unsigned int recalc
-        +IDProperty* properties
-        +ID* orig_id
-    }
-
-    class Object {
-        +ID id
-        +ObjectType type
-        +float loc[3]
-        +float rot[3]
-        +float scale[3]
-        +ListBase modifiers
-        +ListBase constraints
-        +void* data
-        +ObjectRuntime* runtime
-    }
-
-    class Mesh {
-        +ID id
-        +int verts_num
-        +int edges_num
-        +int faces_num
-        +int corners_num
-        +CustomData vert_data
-        +CustomData edge_data
-        +CustomData face_data
-        +CustomData corner_data
-        +MeshRuntime* runtime
-    }
-
-    class Scene {
-        +ID id
-        +Object* camera
-        +World* world
-        +ListBase view_layers
-        +RenderData r
-        +ToolSettings* toolsettings
-    }
-
-    class ModifierData {
-        +ModifierData* next
-        +ModifierData* prev
-        +int type
-        +char name[64]
-    }
-
-    class SubsurfModifierData {
-        +ModifierData modifier
-        +short levels
-        +short renderLevels
-    }
-
-    ID <|-- Object : first member
-    ID <|-- Mesh : first member
-    ID <|-- Scene : first member
-    ModifierData <|-- SubsurfModifierData : first member
-    Object --> ModifierData : modifiers ListBase
-```
-
----
-
-## 11) Short answers
+## 10) Short answers
 
 **Q: Why does every `.blend` file contain a full copy of the SDNA?**  
 So any version of Blender can open any `.blend` file. The loader compares the file's embedded SDNA to the running binary's SDNA and reconstructs each struct accordingly, without needing an external schema file.
@@ -743,7 +758,7 @@ It deletes the copy constructor and copy-assignment operator to prevent accident
 
 ---
 
-## 12) Source-level conclusion
+## 11) Source-level conclusion
 
 DNA is the **invisible foundation** that makes the `.blend` file format both compact and version-resilient:
 

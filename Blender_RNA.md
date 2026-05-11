@@ -11,11 +11,13 @@
 
 - [1) RNA source-file map](#1-rna-source-file-map)
 - [2) What is RNA?](#2-what-is-rna)
+  - [Diagram 1: RNA–DNA–Python layering](#diagram-1-rnadnapython-layering)
 - [3) The BlenderRNA registry and StructRNA](#3-the-blenderrna-registry-and-structrna)
   - [3.1 BlenderRNA (brna)](#31-blenderrna-brna)
   - [3.2 The preprocessing pass vs. the runtime pass](#32-the-preprocessing-pass-vs-the-runtime-pass)
   - [3.3 Registering a struct: `RNA_def_struct`](#33-registering-a-struct-rna_def_struct)
   - [3.4 Concrete registration example: Object](#34-concrete-registration-example-object)
+  - [Diagram 2: BlenderRNA class hierarchy](#diagram-2-blenderrna-class-hierarchy)
 - [4) PointerRNA – the safe reference](#4-pointerrna--the-safe-reference)
   - [4.1 Creating a PointerRNA](#41-creating-a-pointerrna)
   - [4.2 Why owner\_id matters](#42-why-owner_id-matters)
@@ -26,16 +28,13 @@
   - [5.4 Per-type callback vtable](#54-per-type-callback-vtable)
   - [5.5 PropertyRNAOrID – unifying static and dynamic props](#55-propertyrnaorid--unifying-static-and-dynamic-props)
 - [6) RNA paths](#6-rna-paths)
+  - [Diagram 3: RNA path resolution flowchart](#diagram-3-rna-path-resolution-flowchart)
 - [7) The property update system](#7-the-property-update-system)
+  - [Diagram 4: Property read/write flowchart](#diagram-4-property-readwrite-flowchart)
 - [8) Library overrides](#8-library-overrides)
 - [9) Python binding](#9-python-binding)
-- [10) Diagrams](#10-diagrams)
-  - [10.1 BlenderRNA class hierarchy](#101-blenderrna-class-hierarchy)
-  - [10.2 Property read/write flowchart](#102-property-readwrite-flowchart)
-  - [10.3 RNA path resolution flowchart](#103-rna-path-resolution-flowchart)
-  - [10.4 RNA–DNA–Python layering](#104-rnadnapython-layering)
-- [11) Short Answers](#11-short-answers)
-- [12) Source-level conclusion](#12-source-level-conclusion)
+- [10) Short Answers](#10-short-answers)
+- [11) Source-level conclusion](#11-source-level-conclusion)
   - [Recommended reading order](#recommended-reading-order)
 
 ---
@@ -91,6 +90,50 @@ RNA enables four major consumer systems:
 | **UI system**           | Panels use `uiItemR()` which draws a widget directly from a `PropertyRNA` descriptor    |
 | **Animation / Drivers** | F-Curves address data via RNA path strings (e.g. `"location[0]"`)                       |
 | **Library overrides**   | RNA compares and patches linked data using `RNAPropOverrideDiff/Store/Apply` callbacks  |
+
+### Diagram 1: RNA–DNA–Python layering
+
+```mermaid
+classDiagram
+    class DNA {
+        Raw C structs in memory
+        Object, Mesh, Material …
+        No runtime knowledge of fields
+    }
+    class RNA {
+        StructRNA registry
+        PropertyRNA descriptors
+        Typed get/set callbacks
+        Path resolution
+        Update + override hooks
+    }
+    class Python_bpy {
+        bpy.data, bpy.types
+        Thin PyObject wrappers
+        Delegates to RNA_property_*
+    }
+    class UI {
+        uiItemR()
+        Reads PropertyRNA for widget type
+        Writes via RNA setter on confirm
+    }
+    class Animation {
+        FCurve.rna_path
+        RNA_path_resolve at eval time
+        Writes keyed value via RNA setter
+    }
+    class LibOverride {
+        IDOverrideLibrary
+        RNAPropOverrideDiff/Store/Apply
+        Compares local vs linked via RNA
+    }
+
+    DNA <|-- RNA : encapsulates
+    RNA <|-- Python_bpy : wraps
+    RNA <|-- UI : reads descriptors
+    RNA <|-- Animation : path resolution
+    RNA <|-- LibOverride : diff & apply
+```
 
 ---
 
@@ -172,6 +215,81 @@ RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_Object_dependency_update
 ```
 
 The pattern is always the same: declare struct → configure flags/UI → declare each property with its DNA binding, get/set callbacks, flags, and update notifier.
+
+### Diagram 2: BlenderRNA class hierarchy
+
+```mermaid
+classDiagram
+    class BlenderRNA {
+        +Vector~StructRNA*~ structs
+        +HashMap structs_map
+        +reserve(2048)
+    }
+    class StructRNA {
+        +const char* identifier
+        +const char* name
+        +StructRNA* base
+        +ListBase properties
+        +StructRefineFunc refine
+        +StructPathFunc path
+        +ExtensionRNA* ext
+        +int flag
+    }
+    class PropertyRNA {
+        +const char* identifier
+        +PropertyType type
+        +PropertySubType subtype
+        +PropertyFlag flag
+        +int icon
+        +UpdateFunc update
+    }
+    class BoolPropertyRNA {
+        +PropBooleanGetFunc get
+        +PropBooleanSetFunc set
+        +bool defaultvalue
+    }
+    class IntPropertyRNA {
+        +PropIntGetFunc get
+        +PropIntSetFunc set
+        +int hardmin
+        +int hardmax
+        +int softmin
+        +int softmax
+    }
+    class FloatPropertyRNA {
+        +PropFloatGetFunc get
+        +PropFloatSetFunc set
+        +float hardmin / hardmax
+    }
+    class EnumPropertyRNA {
+        +EnumPropertyItem* item
+        +int totitem
+        +PropEnumItemFunc itemf
+        +int defaultvalue
+    }
+    class CollectionPropertyRNA {
+        +PropCollectionBeginFunc begin
+        +PropCollectionNextFunc next
+        +PropCollectionEndFunc end
+        +PropCollectionLengthFunc length
+        +StructRNA* item_type
+    }
+    class PointerPropertyRNA {
+        +PropPointerGetFunc get
+        +PropPointerSetFunc set
+        +StructRNA* pointer_type
+    }
+
+    BlenderRNA "1" --> "*" StructRNA : owns
+    StructRNA "1" --> "*" PropertyRNA : properties
+    StructRNA --> StructRNA : base (inheritance)
+    PropertyRNA <|-- BoolPropertyRNA
+    PropertyRNA <|-- IntPropertyRNA
+    PropertyRNA <|-- FloatPropertyRNA
+    PropertyRNA <|-- EnumPropertyRNA
+    PropertyRNA <|-- CollectionPropertyRNA
+    PropertyRNA <|-- PointerPropertyRNA
+```
 
 ---
 
@@ -377,6 +495,23 @@ scenes[0].objects["Cube"].data.vertices[7].co
 
 The animation system stores the portion after the ID in each `FCurve::rna_path`. On evaluation, `RNA_path_resolve()` walks the graph starting from the ID's `PointerRNA`, following each `.` step through `PROP_POINTER` properties and `[...]` steps through `PROP_COLLECTION` lookups.
 
+### Diagram 3: RNA path resolution flowchart
+
+```mermaid
+flowchart LR
+    A["RNA_path_resolve(ptr, path)"] --> B[Split path at first dot or bracket]
+    B --> C{step type}
+    C -- ".propname" --> D[RNA_struct_find_property\nreturns PropertyRNA*]
+    C -- "[index]" --> E[CollectionLookupIntFunc\nreturns PointerRNA]
+    C -- "[name]" --> F[CollectionLookupStringFunc\nreturns PointerRNA]
+    D --> G{PROP_POINTER?}
+    G -- yes --> H[RNA_property_pointer_get\nadvance PointerRNA]
+    G -- no --> I[Return final PointerRNA\n+ PropertyRNA]
+    E --> H
+    F --> H
+    H --> B
+```
+
 ---
 
 ## 7) The property update system
@@ -408,6 +543,27 @@ RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_Object_dependency_update
 ```
 
 The first argument is a notifier bitmask (used even when no update function is named). The second is an optional C function name that `makesrna` encodes as a function pointer.
+
+### Diagram 4: Property read/write flowchart
+
+```mermaid
+flowchart TD
+    A[bpy / UI / Script\ncalls RNA_property_set] --> B{is idprop?}
+    B -- yes --> C[Write to IDProperty\nvia BKE_idprop API]
+    B -- no --> D{has custom\nset callback?}
+    D -- yes --> E[Call PropXxxSetFunc\ne.g. rna_Object_data_set]
+    D -- no --> F[Write directly to\nDNA struct via offset]
+    E --> G[RNA_property_update]
+    F --> G
+    C --> G
+    G --> H{has UpdateFunc?}
+    H -- yes --> I[Call update callback\ne.g. rna_Object_dependency_update]
+    H -- no --> J{noteflag != 0?}
+    J -- yes --> K["WM_main_add_notifier\nNC_OBJECT | ND_DRAW"]
+    J -- no --> L
+    I --> K
+    K --> L[Depsgraph tag set\nViewport redraws]
+```
 
 ---
 
@@ -484,168 +640,7 @@ static const char *kwlist[] = {
 
 ---
 
-## 10) Diagrams
-
-### 10.1 BlenderRNA class hierarchy
-
-```mermaid
-classDiagram
-    class BlenderRNA {
-        +Vector~StructRNA*~ structs
-        +HashMap structs_map
-        +reserve(2048)
-    }
-    class StructRNA {
-        +const char* identifier
-        +const char* name
-        +StructRNA* base
-        +ListBase properties
-        +StructRefineFunc refine
-        +StructPathFunc path
-        +ExtensionRNA* ext
-        +int flag
-    }
-    class PropertyRNA {
-        +const char* identifier
-        +PropertyType type
-        +PropertySubType subtype
-        +PropertyFlag flag
-        +int icon
-        +UpdateFunc update
-    }
-    class BoolPropertyRNA {
-        +PropBooleanGetFunc get
-        +PropBooleanSetFunc set
-        +bool defaultvalue
-    }
-    class IntPropertyRNA {
-        +PropIntGetFunc get
-        +PropIntSetFunc set
-        +int hardmin
-        +int hardmax
-        +int softmin
-        +int softmax
-    }
-    class FloatPropertyRNA {
-        +PropFloatGetFunc get
-        +PropFloatSetFunc set
-        +float hardmin / hardmax
-    }
-    class EnumPropertyRNA {
-        +EnumPropertyItem* item
-        +int totitem
-        +PropEnumItemFunc itemf
-        +int defaultvalue
-    }
-    class CollectionPropertyRNA {
-        +PropCollectionBeginFunc begin
-        +PropCollectionNextFunc next
-        +PropCollectionEndFunc end
-        +PropCollectionLengthFunc length
-        +StructRNA* item_type
-    }
-    class PointerPropertyRNA {
-        +PropPointerGetFunc get
-        +PropPointerSetFunc set
-        +StructRNA* pointer_type
-    }
-
-    BlenderRNA "1" --> "*" StructRNA : owns
-    StructRNA "1" --> "*" PropertyRNA : properties
-    StructRNA --> StructRNA : base (inheritance)
-    PropertyRNA <|-- BoolPropertyRNA
-    PropertyRNA <|-- IntPropertyRNA
-    PropertyRNA <|-- FloatPropertyRNA
-    PropertyRNA <|-- EnumPropertyRNA
-    PropertyRNA <|-- CollectionPropertyRNA
-    PropertyRNA <|-- PointerPropertyRNA
-```
-
-### 10.2 Property read/write flowchart
-
-```mermaid
-flowchart TD
-    A[bpy / UI / Script\ncalls RNA_property_set] --> B{is idprop?}
-    B -- yes --> C[Write to IDProperty\nvia BKE_idprop API]
-    B -- no --> D{has custom\nset callback?}
-    D -- yes --> E[Call PropXxxSetFunc\ne.g. rna_Object_data_set]
-    D -- no --> F[Write directly to\nDNA struct via offset]
-    E --> G[RNA_property_update]
-    F --> G
-    C --> G
-    G --> H{has UpdateFunc?}
-    H -- yes --> I[Call update callback\ne.g. rna_Object_dependency_update]
-    H -- no --> J{noteflag != 0?}
-    J -- yes --> K["WM_main_add_notifier\nNC_OBJECT | ND_DRAW"]
-    J -- no --> L
-    I --> K
-    K --> L[Depsgraph tag set\nViewport redraws]
-```
-
-### 10.3 RNA path resolution flowchart
-
-```mermaid
-flowchart LR
-    A["RNA_path_resolve(ptr, path)"] --> B[Split path at first dot or bracket]
-    B --> C{step type}
-    C -- ".propname" --> D[RNA_struct_find_property\nreturns PropertyRNA*]
-    C -- "[index]" --> E[CollectionLookupIntFunc\nreturns PointerRNA]
-    C -- "[name]" --> F[CollectionLookupStringFunc\nreturns PointerRNA]
-    D --> G{PROP_POINTER?}
-    G -- yes --> H[RNA_property_pointer_get\nadvance PointerRNA]
-    G -- no --> I[Return final PointerRNA\n+ PropertyRNA]
-    E --> H
-    F --> H
-    H --> B
-```
-
-### 10.4 RNA–DNA–Python layering
-
-```mermaid
-classDiagram
-    class DNA {
-        Raw C structs in memory
-        Object, Mesh, Material …
-        No runtime knowledge of fields
-    }
-    class RNA {
-        StructRNA registry
-        PropertyRNA descriptors
-        Typed get/set callbacks
-        Path resolution
-        Update + override hooks
-    }
-    class Python_bpy {
-        bpy.data, bpy.types
-        Thin PyObject wrappers
-        Delegates to RNA_property_*
-    }
-    class UI {
-        uiItemR()
-        Reads PropertyRNA for widget type
-        Writes via RNA setter on confirm
-    }
-    class Animation {
-        FCurve.rna_path
-        RNA_path_resolve at eval time
-        Writes keyed value via RNA setter
-    }
-    class LibOverride {
-        IDOverrideLibrary
-        RNAPropOverrideDiff/Store/Apply
-        Compares local vs linked via RNA
-    }
-
-    DNA <|-- RNA : encapsulates
-    RNA <|-- Python_bpy : wraps
-    RNA <|-- UI : reads descriptors
-    RNA <|-- Animation : path resolution
-    RNA <|-- LibOverride : diff & apply
-```
-
----
-
-## 11) Short Answers
+## 10) Short Answers
 
 **Q: What is the difference between DNA and RNA?**
 DNA defines the raw memory layout of Blender's data structs (used for `.blend` file I/O). RNA wraps those structs with a runtime registry of named properties, type metadata, and accessor callbacks. DNA knows nothing about field names at runtime; RNA knows everything.
@@ -670,7 +665,7 @@ It sets `DefRNA.make_overridable = true`. Every `RNA_def_property()` call while 
 
 ---
 
-## 12) Source-level conclusion
+## 11) Source-level conclusion
 
 RNA is the connective tissue of Blender's data layer. It sits above DNA (which owns the raw memory) and below every high-level consumer (Python, UI, animation, overrides). Understanding RNA means understanding how every property widget, every `bpy` attribute access, and every F-Curve data path ultimately resolves to a read or write on a DNA struct field.
 

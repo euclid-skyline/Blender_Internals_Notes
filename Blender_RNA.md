@@ -5,13 +5,13 @@
 > - RNA is the engine behind `bpy` (Python API), UI property widgets, animation F-Curve data-paths, library overrides, and operator undo/redo.
 > - The global registry `BlenderRNA` (`brna`) holds all registered `StructRNA` descriptors.
 > - A `PointerRNA` is a safe, typed reference to any piece of Blender data; a `PropertyRNA` is its descriptor.
-> - Property definitions live in `source/blender/makesrna/intern/rna_*.cc`; the `makesrna` build-time tool generates a C header output from those definitions during preprocessing.
+> - Property definitions live in `source/blender/makesrna/intern/rna_*.cc`; the `makesrna` build-time tool generates headers and `rna_*_gen.c/.cc` source files during preprocessing.
 
 ## Table of Contents<!-- omit from toc -->
 
 - [1) RNA source-file map](#1-rna-source-file-map)
 - [2) What is RNA?](#2-what-is-rna)
-  - [Diagram 1: RNA–DNA–Python layering](#diagram-1-rnadnapython-layering)
+  - [Diagram 1: RNA as the abstraction layer between DNA and high-level systems](#diagram-1-rna-as-the-abstraction-layer-between-dna-and-high-level-systems)
 - [3) The BlenderRNA registry and StructRNA](#3-the-blenderrna-registry-and-structrna)
   - [3.1 BlenderRNA (brna)](#31-blenderrna-brna)
   - [3.2 The preprocessing pass vs. the runtime pass](#32-the-preprocessing-pass-vs-the-runtime-pass)
@@ -41,23 +41,23 @@
 
 ## 1) RNA source-file map
 
-| File                                                   | Important symbols                                                                                                    | Role                                                    |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| `source/blender/makesrna/RNA_types.hh`                 | `PointerRNA`, `PropertyType`, `PropertySubType`, `PropertyFlag`, `PropertyUnit`                                      | Core public type declarations                           |
-| `source/blender/makesrna/RNA_define.hh`                | `BlenderRNA`, `RNA_create`, `RNA_free`, `RNA_def_struct`, `RNA_def_property`, `RNA_define_lib_overridable`           | Public definition API used during preprocessing         |
-| `source/blender/makesrna/RNA_access.hh`                | `RNA_id_pointer_create`, `RNA_pointer_create_discrete`, `RNA_struct_find`, `RNA_property_*`                          | Public runtime access and traversal API                 |
-| `source/blender/makesrna/RNA_path.hh`                  | `RNAPath`, `RNA_path_resolve`, `RNA_path_append`                                                                     | Path string encoding and resolution                     |
-| `source/blender/makesrna/RNA_enum_types.hh`            | `rna_enum_object_mode_items`, many enum arrays                                                                       | Shared enum item tables used across rna_*.cc files      |
-| `source/blender/makesrna/intern/rna_internal_types.hh` | All callback `using` aliases, `PropertyRNAOrID`, `RNAPropertyOverrideDiffContext`, `RNAPropOverrideDiff/Store/Apply` | Internal struct and callback typedefs                   |
-| `source/blender/makesrna/intern/rna_internal.hh`       | `BlenderDefRNA`, `ContainerDefRNA`, `PropertyDefRNA`, `StructDefRNA`, `RNA_MAGIC`                                    | Internal preprocessing state and definition metadata    |
-| `source/blender/makesrna/intern/makesrna.cc`           | `main()` of the build-time tool                                                                                      | Generates `rna_*.c` output during CMake preprocessing   |
-| `source/blender/makesrna/intern/rna_define.cc`         | `RNA_create`, `RNA_def_struct_ptr`, `RNA_def_property`, `RNA_def_property_update`                                    | Runtime implementation of the definition API            |
-| `source/blender/makesrna/intern/rna_access.cc`         | `RNA_property_boolean_get`, `RNA_property_update`, many getters/setters                                              | Runtime property read/write and notifier dispatch       |
-| `source/blender/makesrna/intern/rna_rna.cc`            | `rna_enum_property_type_items`, RNA self-description registration                                                    | RNA describing its own types (introspection)            |
-| `source/blender/makesrna/intern/rna_ID.cc`             | Registration of the base `ID` struct                                                                                 | Defines RNA for all ID-derived types                    |
-| `source/blender/makesrna/intern/rna_object.cc`         | `RNA_def_struct(brna, "Object", "ID")`, enum tables                                                                  | Concrete example of how a subsystem registers its types |
-| `source/blender/makesrna/intern/rna_wm.cc`             | Operator, KeyMap, Window RNA definitions                                                                             | WM types exposed to Python and UI                       |
-| `source/blender/makesrna/intern/rna_scene.cc`          | Scene, RenderSettings, ToolSettings RNA                                                                              | Scene-level data registration                           |
+| File                                                   | Important symbols                                                                                                    | Role                                                                   |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `source/blender/makesrna/RNA_types.hh`                 | `PointerRNA`, `PropertyType`, `PropertySubType`, `PropertyFlag`, `PropertyUnit`                                      | Core public type declarations                                          |
+| `source/blender/makesrna/RNA_define.hh`                | `BlenderRNA`, `RNA_create`, `RNA_free`, `RNA_def_struct`, `RNA_def_property`, `RNA_define_lib_overridable`           | Public definition API used during preprocessing                        |
+| `source/blender/makesrna/RNA_access.hh`                | `RNA_id_pointer_create`, `RNA_pointer_create_discrete`, `RNA_struct_find`, `RNA_property_*`                          | Public runtime access and traversal API                                |
+| `source/blender/makesrna/RNA_path.hh`                  | `RNAPath`, `RNA_path_resolve`, `RNA_path_append`                                                                     | Path string encoding and resolution                                    |
+| `source/blender/makesrna/RNA_enum_types.hh`            | `rna_enum_object_mode_items`, many enum arrays                                                                       | Shared enum item tables used across rna_*.cc files                     |
+| `source/blender/makesrna/intern/rna_internal_types.hh` | All callback `using` aliases, `PropertyRNAOrID`, `RNAPropertyOverrideDiffContext`, `RNAPropOverrideDiff/Store/Apply` | Internal struct and callback typedefs                                  |
+| `source/blender/makesrna/intern/rna_internal.hh`       | `BlenderDefRNA`, `ContainerDefRNA`, `PropertyDefRNA`, `StructDefRNA`, `RNA_MAGIC`                                    | Internal preprocessing state and definition metadata                   |
+| `source/blender/makesrna/intern/makesrna.cc`           | `main()` of the build-time tool                                                                                      | Generates RNA headers and `rna_*_gen.c/.cc` during CMake preprocessing |
+| `source/blender/makesrna/intern/rna_define.cc`         | `RNA_create`, `RNA_def_struct_ptr`, `RNA_def_property`, `RNA_def_property_update`                                    | Runtime implementation of the definition API                           |
+| `source/blender/makesrna/intern/rna_access.cc`         | `RNA_property_boolean_get`, `RNA_property_update`, many getters/setters                                              | Runtime property read/write and notifier dispatch                      |
+| `source/blender/makesrna/intern/rna_rna.cc`            | `rna_enum_property_type_items`, RNA self-description registration                                                    | RNA describing its own types (introspection)                           |
+| `source/blender/makesrna/intern/rna_ID.cc`             | Registration of the base `ID` struct                                                                                 | Defines RNA for all ID-derived types                                   |
+| `source/blender/makesrna/intern/rna_object.cc`         | `RNA_def_struct(brna, "Object", "ID")`, enum tables                                                                  | Concrete example of how a subsystem registers its types                |
+| `source/blender/makesrna/intern/rna_wm.cc`             | Operator, KeyMap, Window RNA definitions                                                                             | WM types exposed to Python and UI                                      |
+| `source/blender/makesrna/intern/rna_scene.cc`          | Scene, RenderSettings, ToolSettings RNA                                                                              | Scene-level data registration                                          |
 
 ---
 
@@ -70,6 +70,7 @@ The module documentation captures the intent concisely from Doxygen documentatio
 ```text
  * The RNA module defines and provides the access API to the data, thus
  * encapsulating DNA.
+```
 
 This is a contract statement:
 
@@ -77,8 +78,7 @@ This is a contract statement:
  - "provides … the access API" — it also implements or exposes those operations at runtime.
  - "encapsulating DNA" — DNA is the implementation detail. RNA is the abstraction boundary. Consumers of RNA should never need to know about DNA struct offsets, SDNA blobs, or alignment rules.
 
-In software design terms, RNA is the façade pattern over DNA.
-```
+In software design terms, RNA is the facade pattern over DNA.
 
 In practice, RNA is a *reflection layer* that wraps every `DNA_*_types.h` C struct and makes it introspectable at runtime. Think of it as a schema registry: every type in Blender's data model is registered with a human-readable identifier, a UI label, a set of named properties, and per-property metadata (type, range, flags, callbacks).
 
@@ -91,7 +91,7 @@ RNA enables four major consumer systems:
 | **Animation / Drivers** | F-Curves address data via RNA path strings (e.g. `"location[0]"`)                       |
 | **Library overrides**   | RNA compares and patches linked data using `RNAPropOverrideDiff/Store/Apply` callbacks  |
 
-### Diagram 1: RNA–DNA–Python layering
+### Diagram 1: RNA as the abstraction layer between DNA and high-level systems
 
 ```mermaid
 classDiagram
@@ -141,7 +141,7 @@ classDiagram
 
 ### 3.1 BlenderRNA (brna)
 
-`BlenderRNA` is the global registry that holds every registered struct descriptor. It is created once at startup via `RNA_create()` and freed at shutdown via `RNA_free()`.
+`BlenderRNA` is the global registry that holds every registered struct descriptor. In the `makesrna` preprocessing tool it is built with `RNA_create()` and torn down with `RNA_free()`. In runtime Blender, registry storage is created through generated initialization code and accessed via `RNA_blender_rna_get()`.
 
 **File:** `source/blender/makesrna/intern/rna_define.cc`
 
@@ -167,8 +167,8 @@ BlenderRNA *RNA_create()
 
 The RNA system has two operational modes:
 
-- **Preprocessing** (compile-time tool `makesrna`): The `makesrna` binary runs during the CMake build. It calls `RNA_create()` → iterates `PROCESS_ITEMS[]`, calling each subsystem's `RNA_def_*()` entry point (e.g. `RNA_def_object`, `RNA_def_scene`, `RNA_def_ID`) → writes out a generated C source file. The `#ifdef RNA_RUNTIME` guards in `rna_define.cc` ensure that the expensive DNA verification path (`rna_find_sdna_member`) is only executed during this build step.
-- **Runtime** (inside a running Blender): `RNA_init()` is called from `WM_init()`. At this point all `StructRNA` definitions already exist (compiled into the binary), so `RNA_init()` only builds the `structs_map` hash for fast lookup.
+- **Preprocessing** (compile-time tool `makesrna`): The `makesrna` binary runs during the CMake build. It calls `RNA_create()` → iterates `PROCESS_ITEMS[]`, calling each subsystem's `RNA_def_*()` entry point (e.g. `RNA_def_object`, `RNA_def_scene`, `RNA_def_ID`) → writes generated headers and `rna_*_gen.c/.cc` source files. The `#ifdef RNA_RUNTIME` guards in `rna_define.cc` ensure that the expensive DNA verification path (`rna_find_sdna_member`) is only executed during this build step.
+- **Runtime** (inside a running Blender): `RNA_init()` is called during startup from `source/creator/creator.cc`. At this point all `StructRNA` definitions already exist (compiled into the binary), so `RNA_init()` primarily builds the `structs_map` hash for fast lookup.
 
 ### 3.3 Registering a struct: `RNA_def_struct`
 
@@ -301,10 +301,11 @@ classDiagram
 
 ```c
 struct PointerRNA {
-  ID *owner_id;        // the ID that owns this data (may equal data for top-level IDs)
-  StructRNA *type;     // the registered StructRNA descriptor for this pointer
-  void *data;          // raw C pointer to the actual DNA struct
-  // ancestors[] — chain of parent PointerRNAs for path resolution
+  ID *owner_id = nullptr;
+  StructRNA *type = nullptr;
+  void *data = nullptr;
+
+  // Vector<AncestorPointerRNA, ANCESTOR_POINTERRNA_DEFAULT_SIZE> ancestors;
 };
 ```
 
@@ -314,16 +315,16 @@ struct PointerRNA {
 
 ```c
 // Create a pointer to a top-level ID (Object, Scene, Material…)
-void RNA_id_pointer_create(ID *id, PointerRNA *r_ptr);
+PointerRNA RNA_id_pointer_create(ID *id);
 
 // Create a pointer to an arbitrary sub-struct
-void RNA_pointer_create_discrete(ID *id, StructRNA *type, void *data, PointerRNA *r_ptr);
+PointerRNA RNA_pointer_create_discrete(ID *id, StructRNA *type, void *data);
 
 // Null-check
 bool RNA_pointer_is_null(const PointerRNA *ptr);
 ```
 
-`RNA_main_pointer_create(Main *main, PointerRNA *r_ptr)` creates a special root pointer representing the entire `Main` database.
+`RNA_main_pointer_create(Main *main)` creates a special root pointer representing the entire `Main` database.
 
 ### 4.2 Why owner_id matters
 
@@ -342,15 +343,15 @@ Every `PointerRNA` carries `owner_id` so that:
 **File:** `source/blender/makesrna/RNA_types.hh`
 
 ```c
-typedef enum PropertyType {
-  PROP_BOOLEAN   = 0,
-  PROP_INT       = 1,
-  PROP_FLOAT     = 2,
-  PROP_STRING    = 3,
-  PROP_ENUM      = 4,
-  PROP_POINTER   = 5,
-  PROP_COLLECTION= 6,
-} PropertyType;
+enum PropertyType {
+  PROP_BOOLEAN = 0,
+  PROP_INT = 1,
+  PROP_FLOAT = 2,
+  PROP_STRING = 3,
+  PROP_ENUM = 4,
+  PROP_POINTER = 5,
+  PROP_COLLECTION = 6,
+};
 ```
 
 Each type has a corresponding concrete descriptor struct (`BoolPropertyRNA`, `IntPropertyRNA`, `FloatPropertyRNA`, `StringPropertyRNA`, `EnumPropertyRNA`, `PointerPropertyRNA`, `CollectionPropertyRNA`) that extends the base `PropertyRNA` with type-specific callbacks and defaults.
@@ -469,8 +470,8 @@ RNA paths are dot-separated strings that address any property in the data graph.
 ```c
 struct RNAPath {
   std::string path;        // e.g. "nodes[\"Mix\"].inputs[0].default_value"
-  std::optional<std::string> key;   // string key if last step was a dict lookup
-  std::optional<int> index;         // integer index if last step was array access
+  std::optional<std::string> key = std::nullopt;   // string key if last step was a dict lookup
+  std::optional<int> index = std::nullopt;         // integer index if last step was array access
 };
 
 // Resolve a path from a starting PointerRNA
@@ -480,11 +481,11 @@ bool RNA_path_resolve(const PointerRNA *ptr,
                       PropertyRNA **r_prop);
 
 // Build a path incrementally
-void RNA_path_append(std::string &path,
-                     const PointerRNA *ptr,
-                     PropertyRNA *prop,
-                     int intkey,
-                     const char *strkey);
+char *RNA_path_append(const char *path,
+                      const PointerRNA *ptr,
+                      PropertyRNA *prop,
+                      int intkey,
+                      const char *strkey);
 ```
 
 A typical absolute path looks like:
@@ -645,8 +646,8 @@ static const char *kwlist[] = {
 **Q: What is the difference between DNA and RNA?**
 DNA defines the raw memory layout of Blender's data structs (used for `.blend` file I/O). RNA wraps those structs with a runtime registry of named properties, type metadata, and accessor callbacks. DNA knows nothing about field names at runtime; RNA knows everything.
 
-**Q: Where is `BlenderRNA *G_RNA` initialized?**
-`RNA_init()` is called from `WM_init()` during startup. The global pointer is populated then and lives until `RNA_exit()` at shutdown.
+**Q: Where is BlenderRNA initialized?**
+`RNA_init()` is called during startup from `source/creator/creator.cc`. The runtime registry storage is accessed via `RNA_blender_rna_get()` and is released by `RNA_exit()` at shutdown.
 
 **Q: Can properties exist that have no DNA backing?**
 Yes. Python addon properties created with `bpy.props.*` are *runtime RNA properties* (`PROP_INTERN_RUNTIME` flag set, `is_rna_storage_idprop = true`). Their values are stored in the ID's `IDProperty` chain, not in a DNA field.
@@ -661,7 +662,7 @@ Yes. Python addon properties created with `bpy.props.*` are *runtime RNA propert
 It sets `DefRNA.make_overridable = true`. Every `RNA_def_property()` call while this flag is active automatically sets `PROPOVERRIDE_OVERRIDABLE_LIBRARY` on the new property, marking it as eligible for library override operations. The flag is typically set/cleared around a block of related property definitions.
 
 **Q: How is a PointerRNA null-checked safely?**
-`RNA_pointer_is_null(const PointerRNA *ptr)` returns `true` when `ptr->data == nullptr`. This is preferred over directly checking `ptr->data` because future versions may add additional null-state semantics.
+`RNA_pointer_is_null(const PointerRNA *ptr)` returns `true` when `ptr->data == nullptr || ptr->type == nullptr`. This is preferred over direct field checks because null semantics are centralized in one helper.
 
 ---
 

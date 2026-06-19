@@ -1,6 +1,6 @@
 # Blender RNA – Reflection & API Layer – Source Code Review<!-- omit from toc -->
 
-> - RNA (**R**untime **N**ode **A**PI – historically) is the reflection and introspection layer built on top of DNA.
+> - RNA is Blender's reflection and introspection layer built on top of DNA.
 > - It exposes every Blender data type as a self-describing set of *structs* and *properties* that can be queried, read, and written uniformly.
 > - RNA is the engine behind `bpy` (Python API), UI property widgets, animation F-Curve data-paths, library overrides, and operator undo/redo.
 > - The global registry `BlenderRNA` (`brna`) holds all registered `StructRNA` descriptors.
@@ -402,7 +402,7 @@ Key flags that control property behavior:
 | ---------------------- | ------------------------------------------ |
 | `PROP_EDITABLE`        | Property can be set by users/scripts       |
 | `PROP_ANIMATABLE`      | Property can have F-Curves                 |
-| `PROP_HIDDEN`          | Not shown in the UI or Python              |
+| `PROP_HIDDEN`          | Hidden from auto-generated UI (and skipped by presets) |
 | `PROP_NEVER_NULL`      | Pointer/string may not be null             |
 | `PROP_ENUM_FLAG`       | Enum stores a bitfield, not a single value |
 | `PROP_ID_REFCOUNT`     | Pointer contributes to ID reference count  |
@@ -617,7 +617,7 @@ The `bpy` Python module is a thin adapter over RNA. When Python accesses `bpy.da
 
 1. `bpy.data` → a Python object wrapping a `PointerRNA` for the `Main` struct.
 2. `.objects` → a `CollectionPropertyRNA` iterator; Python constructs a `bpy_prop_collection` wrapper.
-3. `["Cube"]` → `PropCollectionLookupStringFunc` is called, which uses `BLI_ghash` or a linear scan to find the Object with that name.
+3. `["Cube"]` → `PropCollectionLookupStringFunc` is called (via RNA collection lookup callbacks) to resolve the named item.
 4. `.location` → `RNA_struct_find_property()` looks up "location" in the Object `StructRNA`; returns a `FloatPropertyRNA`.
 5. Python calls `RNA_property_float_get_array()` through `rna_access.cc`.
 
@@ -644,7 +644,7 @@ static const char *kwlist[] = {
 ## 10) Short Answers
 
 **Q: What is the difference between DNA and RNA?**
-DNA defines the raw memory layout of Blender's data structs (used for `.blend` file I/O). RNA wraps those structs with a runtime registry of named properties, type metadata, and accessor callbacks. DNA knows nothing about field names at runtime; RNA knows everything.
+DNA defines the raw memory layout of Blender's data structs (used for `.blend` file I/O). RNA wraps those structs with a runtime registry of named properties, type metadata, and accessor callbacks. In practice, higher-level systems consume RNA descriptors/callbacks instead of working directly with SDNA tables.
 
 **Q: Where is BlenderRNA initialized?**
 `RNA_init()` is called during startup from `source/creator/creator.cc`. The runtime registry storage is accessed via `RNA_blender_rna_get()` and is released by `RNA_exit()` at shutdown.

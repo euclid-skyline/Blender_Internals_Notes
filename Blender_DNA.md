@@ -3,7 +3,7 @@
 > - Explains Blender's DNA (Data Definition Layer): the system that defines every struct written to a `.blend` file.
 > - Shows how `makesdna` scans the `DNA_*_types.h` headers at build time and produces the `SDNA` binary that is embedded in every executable and every `.blend` file.
 > - Traces how the runtime `SDNA` struct enables forward- and backward-compatible file loading by comparing the file's embedded SDNA to the running binary's SDNA.
-> - Highlights the key design constraints (alignment, no defines for array lengths, no function pointers) that make DNA portable across platforms and versions.
+> - Highlights the key design constraints (alignment, no defines for array lengths, restricted/special-cased function-pointer usage) that make DNA portable across platforms and versions.
 > - Points to the key source files and explains what to look for in each one.
 
 ## Table of Contents<!-- omit from toc -->
@@ -150,7 +150,7 @@ STRC (4 bytes)
 <type_nr> <member_count>  <type_nr> <name_nr> ...
 ```
 
-All integers and shorts are read/written **aligned** (little-endian on disk, endianness was handled pre-5.0).
+All integers and shorts are read/written **aligned**. Pointer-size conversion is an active path; endianness conversion is largely legacy in modern Blender and the parser contains explicit endianness-sensitive handling points.
 
 ### 3.3 How structs are included
 
@@ -739,7 +739,7 @@ The minimum floor size of any valid `.blend` file is therefore:
 
 $$\text{file size} \geq 12 + \text{sizeof}(BHead) + DNAlen + \text{sizeof}(BHead)$$
 
-On Blender 5.1.1 specifically, `dna.cc` contains 6,647 data lines × 20 bytes per line, giving `DNAlen = 132,940 bytes` (~130 KB). So even a freshly created and immediately saved scene with no objects will be at least that large — purely from the SDNA. The `DNA1` block is not optional; `blenloader` requires it to decode any other block in the file, so Blender writes it unconditionally. This is the price paid for complete self-sufficiency: a `.blend` file is independently decodable by any Blender version without external schema information.
+`DNAlen` is build-dependent and should be read from the generated `dna.cc` in your current build tree rather than hard-coded from another version. In practice this keeps the minimum `.blend` size in the rough `DNA1`-dominant range (typically around the low hundreds of KB), even for nearly empty files. The `DNA1` block is not optional; `blenloader` requires it to decode any other block in the file, so Blender writes it unconditionally. This is the price paid for complete self-sufficiency: a `.blend` file is independently decodable by any Blender version without external schema information.
 
 **Q: Why can't DNA headers use `#define` for array sizes?**  
 `makesdna` is a simple parser that does not evaluate preprocessor directives. Array sizes must be literal integer constants so `makesdna` can compute the exact byte size of each field.

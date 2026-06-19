@@ -4,6 +4,7 @@
 > - Shows the main entry points, bootstrap path, and the hand-off into `WM_init()` and `WM_main()`.
 > - Highlights global startup state, signal handling, and the staged command-line parsing flow.
 > - Points to the key source files responsible for initialization and background/GUI execution.
+> - Validated for Blender 5.1.2, including `WITH_HEADLESS` behavior and current shutdown ordering.
 
 ## Table of Contents<!-- omit from toc -->
 
@@ -76,6 +77,8 @@
 
 ### 2.1 Primary application entry: `source/creator/creator.cc`
 
+Source: `source/creator/creator.cc` (lines 320-326).
+
 ```cpp
 /**
  * Blender's main function responsibilities are:
@@ -90,6 +93,8 @@ int main(int argc, ...)
 This is the **real startup root** for the Blender executable.
 
 ### 2.2 Alternative entry point for Windows launcher: `source/creator/blender_launcher_win32.c`
+
+Source: `source/creator/blender_launcher_win32.c` (lines 59-97).
 
 ```c
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
@@ -107,6 +112,8 @@ On Windows, `blender-launcher.exe` is a small wrapper that resolves and starts `
 The important point is that these are **not two functions inside one executable calling each other directly**. Instead, the Windows build creates **two separate executable targets**.
 
 **File:** `source/creator/CMakeLists.txt`
+
+Source: `source/creator/CMakeLists.txt` (lines 342-353).
 
 ```cmake
 add_executable(blender ${EXETYPE} ${SRC})
@@ -127,6 +134,8 @@ This means:
 The launcher does **not** call `main()` as a normal C/C++ function. Instead, it builds the full path to `blender.exe` and starts it as a **new process** using `CreateProcess(...)`.
 
 **File:** `source/creator/blender_launcher_win32.c`
+
+Source: `source/creator/blender_launcher_win32.c` (lines 95-123).
 
 ```c
 /* Add blender.exe to path, resulting in the full path to the blender executable. */
@@ -169,6 +178,8 @@ When WITH_PYTHON_MODULE is enabled, main_python_enter() is effectively the same 
 
 In creator.cc
 
+Source: `source/creator/creator.cc` (lines 295-304).
+
 ```cpp
 #ifdef WITH_PYTHON_MODULE
 int main_python_enter(int argc, const char **argv);
@@ -178,9 +189,11 @@ int main_python_enter(int argc, const char **argv);
 #endif
 ```
 
-> **5.1.1 note:** The `WITH_HEADLESS` build configuration (headless builds without any display server) also enters this same path. See section 4.9.
+The `WITH_HEADLESS` build configuration (headless builds without any display server) also enters this startup path. See section 4.9.
 
 Then later the file defines:
+
+Source: `source/creator/creator.cc` (lines 326-327).
 
 ```cpp
 int main(int argc, ...)
@@ -197,6 +210,8 @@ The call site is in:
 /source/blender/python/intern/bpy_interface.cc
 
 Inside bpy_module_delay_init():
+
+Source: `source/blender/python/intern/bpy_interface.cc` (lines 1016-1067).
 
 ```cpp
 /* Defined in 'creator.c' when building as a Python module. */
@@ -228,6 +243,8 @@ The source tree describes that intent directly.
 
 **File:** `source/creator/creator.cc`
 
+Source: `source/creator/creator.cc` (line 295).
+
 ```cpp
 /* Called in `bpy_interface.cc` when building as a Python module. */
 int main_python_enter(int argc, const char **argv);
@@ -237,12 +254,16 @@ And Blender's wheel-packaging helper states the broader use case:
 
 **File:** `build_files/utils/make_bpy_wheel.py`
 
+Source: `build_files/utils/make_bpy_wheel.py` (line 58).
+
 ```python
 This package provides Blender as a Python module for use in studio pipelines, web services,
 scientific research, and more.
 ```
 
 The runtime behavior is also intentionally different from the normal GUI executable. In `creator.cc`:
+
+Source: `source/creator/creator.cc` (lines 513-568).
 
 ```cpp
 /* Using preferences or user startup makes no sense for #WITH_PYTHON_MODULE. */
@@ -252,7 +273,7 @@ G.factory_startup = true;
 G.background = true;
 ```
 
-> **5.1.1 update:** `G.background = true` (and `BKE_sound_force_device("None")`) is now guarded by `#if defined(WITH_PYTHON_MODULE) || defined(WITH_HEADLESS)`. Builds compiled with `WITH_HEADLESS` also always run in background-mode. However, `G.factory_startup = true` is only set for `WITH_PYTHON_MODULE`, not `WITH_HEADLESS`.
+In Blender 5.1.2, `G.background = true` (and `BKE_sound_force_device("None")`) is guarded by `#if defined(WITH_PYTHON_MODULE) || defined(WITH_HEADLESS)`. Builds compiled with `WITH_HEADLESS` also always run in background mode. `G.factory_startup = true` is set only for `WITH_PYTHON_MODULE`, not `WITH_HEADLESS`.
 
 So this path is mainly for **headless / scripted / embedded use**, not for the usual windowed Blender session.
 
@@ -261,6 +282,8 @@ So this path is mainly for **headless / scripted / embedded use**, not for the u
 The CMake build switches from creating the normal executable to creating a Python-loadable module.
 
 **File:** `source/creator/CMakeLists.txt`
+
+Source: `source/creator/CMakeLists.txt` (lines 302-321).
 
 ```cmake
 if(WITH_PYTHON_MODULE)
@@ -280,7 +303,7 @@ if(WITH_PYTHON_MODULE)
 endif()
 ```
 
-> **5.1.1 note:** A separate `WITH_HEADLESS` CMake option also produces a background-only build (no display server, no GHOST window). The macOS `psn_` argument-patch guard in `creator.cc` now reads `!defined(WITH_PYTHON_MODULE) && !defined(WITH_HEADLESS)`.
+A separate `WITH_HEADLESS` CMake option also produces a background-only build (no display server, no GHOST window). The macOS `psn_` argument-patch guard in `creator.cc` reads `!defined(WITH_PYTHON_MODULE) && !defined(WITH_HEADLESS)`.
 
 This means:
 
@@ -292,6 +315,8 @@ This means:
 A source-backed configuration shortcut already exists for this build mode.
 
 **File:** `build_files/cmake/config/bpy_module.cmake`
+
+Source: `build_files/cmake/config/bpy_module.cmake` (line 11).
 
 ```cmake
 # Example usage:
@@ -314,6 +339,8 @@ After building, the resulting module is placed under a `bpy` output directory, f
 - `bin/bpy/__init__.so` on Linux,
 - `bin/Release/bpy/__init__.pyd` on Windows multi-config generators.
 
+> **Note:** Output paths depend on the CMake generator and platform. Single-config generators (e.g., Unix Makefiles, Ninja) place output directly in `bin/`, while multi-config generators (e.g., Visual Studio, Xcode) use configuration-specific subdirectories like `bin/Release/` or `bin/Debug/`. On macOS, the module suffix is `.so` for standard builds but may vary based on linking configuration. Always check the actual build output directory after compilation.
+
 Then the intended usage is from Python itself:
 
 ```python
@@ -328,24 +355,24 @@ So, conceptually, section `2.3` is the **embedded-Python / importable-Blender en
 
 ```mermaid
 flowchart TD
-    A["OS entry point<br/>wWinMain / main / main_python_enter"] --> B["creator.cc::main"
+  A["OS entry point<br/>wWinMain / main / main_python_enter<br/>(§2.1-§2.3)"] --> B["creator.cc::main<br/>(§4)"
 ]
-    B --> B0["Platform setup<br/>stdout unbuffering, LD_PRELOAD restore,<br/>Win32 UTF-16 args, TBB huge pages"]
-    B0 --> C["Early process setup<br/>MEM allocator, build date, CLG_init,<br/>CTX_create, BKE_appdir_program_path_init"]
-    C --> D["BKE_blender_globals_init<br/>BKE_cpp_types_init / BKE_idtype_init<br/>BKE_modifier_init / DEG_register_node_types<br/>BKE_callback_global_init"]
-    D --> E["BLI_args_create + main_args_setup"]
-    E --> F["ARG_PASS_ENVIRONMENT<br/>(threads, env paths)"]
-    F --> G["BKE_appdir_init<br/>BLI_task_scheduler_init<br/>fftw::initialize_float"]
-    G --> H["ARG_PASS_SETTINGS<br/>(background, factory-startup, debug)<br/>main_signal_setup"]
-    H --> I["Core subsystems<br/>IMB_init / MOV_init / RNA_init<br/>RE_engines_init / node_system_init<br/>BKE_sound_init_once / BKE_materials_init"]
-    I --> I2["ARG_PASS_SETTINGS_GUI (GUI only)<br/>ARG_PASS_SETTINGS_FORCE"]
-    I2 --> J["WM_init<br/>(GHOST / operators / home-file /<br/>GPU / Python / add-ons / keymaps)"]
-    J --> K["BLI_args_parse ARG_PASS_FINAL<br/>(default_cb = main_args_handle_load_file)"]
-    K --> L{"G.background?"}
-    L -- No --> M["WM_init_splash_on_startup"]
-    M --> N["WM_main event loop<br/>(infinite: events → handlers →<br/>notifiers → draw)"]
-    L -- Yes --> O["main_arg_deferred_handle<br/>(render / python / command)"]
-    O --> P["WM_exit → WM_exit_ex<br/>(Python / GPU / RNA / GHOST /<br/>threads / sound / CLG shutdown)"]
+  B --> B0["Platform setup<br/>stdout unbuffering, LD_PRELOAD restore,<br/>Win32 UTF-16 args, TBB huge pages<br/>(§4.2-§4.3)"]
+  B0 --> C["Early process setup<br/>MEM allocator, build date, CLG_init,<br/>CTX_create, BKE_appdir_program_path_init<br/>(§4.4)"]
+  C --> D["BKE_blender_globals_init<br/>BKE_cpp_types_init / BKE_idtype_init<br/>BKE_modifier_init / DEG_register_node_types<br/>BKE_callback_global_init<br/>(§4.5)"]
+  D --> E["BLI_args_create + main_args_setup<br/>(§4.6)"]
+  E --> F["ARG_PASS_ENVIRONMENT<br/>(threads, env paths)<br/>(§4.6)"]
+  F --> G["BKE_appdir_init<br/>BLI_task_scheduler_init<br/>fftw::initialize_float<br/>(§4.6)"]
+  G --> H["ARG_PASS_SETTINGS<br/>(background, factory-startup, debug)<br/>main_signal_setup<br/>(§4.6)"]
+  H --> I["Core subsystems<br/>IMB_init / MOV_init / RNA_init<br/>RE_engines_init / node_system_init<br/>BKE_sound_init_once / BKE_materials_init<br/>(§4.7)"]
+  I --> I2["ARG_PASS_SETTINGS_GUI (GUI only)<br/>ARG_PASS_SETTINGS_FORCE<br/>(§4.7)"]
+  I2 --> J["WM_init (window-manager)<br/>(home-file / GPU / operators /<br/>GHOST / BPY_python_start /<br/>add-ons / keymaps)<br/>(§4.7, §5)"]
+  J --> K["BLI_args_parse ARG_PASS_FINAL<br/>(default_cb = main_args_handle_load_file)<br/>(§4.8)"]
+  K --> L{"G.background?<br/>(§4.8-§4.9)"}
+  L -- No --> M["WM_init_splash_on_startup<br/>(§4.8)"]
+  M --> N["WM_main event loop<br/>(infinite: events → handlers →<br/>notifiers → draw)<br/>(§6)"]
+  L -- Yes --> O["main_arg_deferred_handle<br/>(render / python / command)<br/>(§4.8-§4.9)"]
+  O --> P["WM_exit → WM_exit_ex<br/>(Python / GPU / RNA / GHOST /<br/>threads / sound / CLG shutdown)<br/>(§7)"]
 ```
 
 ---
@@ -355,6 +382,8 @@ flowchart TD
 ### 4.1 Early exit safety and platform argument handling
 
 At the very beginning of `main()`, Blender registers a cleanup callback so that resources are freed correctly even on early exits (e.g., when Python calls `sys.exit()` during argument parsing):
+
+Source: `source/creator/creator.cc` (lines 342-346).
 
 ```cpp
 CreatorAtExitData app_init_data = {nullptr};
@@ -366,7 +395,11 @@ app_init_data.early_exit = &app_init_data_early_exit;
 
 The `early_exit` pointer is cleared later once initialization is past the fragile early phase (`app_init_data.early_exit = nullptr;`). Until then, `callback_main_atexit` will also run `CTX_free()`, `DEG_free_node_types()`, `BKE_blender_globals_clear()`, `BKE_appdir_exit()`, `DNA_sdna_current_free()`, and `CLG_exit()` — enough to release the essential early-allocated resources.
 
+**Early-exit guard pattern:** The code at callback_main_atexit() explicitly checks `if (CreatorAtExitData_EarlyExit *early_exit = app_init_data->early_exit)` before running certain cleanup operations. This guard prevents double-cleanup and resource leaks if the application exits unexpectedly before stable initialization is reached (e.g., syntax errors in Python startup code, missing required files, or explicit `sys.exit()` calls during argument parsing). Once the `early_exit` pointer is cleared at creator.cc:542, the callback assumes full initialization has succeeded and skips the guarded early-stage teardown.
+
 On Windows, the native UTF-16 command-line arguments (`GetCommandLineW()`) are converted to standard UTF-8 before normal cross-platform processing begins:
+
+Source: `source/creator/creator.cc` (lines 365-371).
 
 ```cpp
 wchar_t **argv_16 = CommandLineToArgvW(GetCommandLineW(), &argc);
@@ -384,6 +417,8 @@ Before the argument parser is active, several compile-time and platform-specific
 
 **Unbuffered stdout (debug builds only)**
 
+Source: `source/creator/creator.cc` (lines 349-351).
+
 ```cpp
 #ifndef NDEBUG
   setvbuf(stdout, nullptr, _IONBF, 0);
@@ -394,6 +429,8 @@ This ensures that debug `printf` output is immediately visible when stepping thr
 
 **Linux `LD_PRELOAD` restoration**
 
+Source: `source/creator/creator.cc` (lines 272-287, call at line 357).
+
 ```cpp
 restore_ld_preload();
 ```
@@ -403,6 +440,8 @@ Blender may have patched `LD_PRELOAD` at launch to inject a custom allocator. `r
 **OpenGL shader compilation subprocess early exit (optional)**
 
 When the `WITH_OPENGL_BACKEND` is enabled and subprocess support is available, `main()` checks a special first argument before doing anything else:
+
+Source: `source/creator/creator.cc` (lines 379-385).
 
 ```cpp
 #if defined(WITH_OPENGL_BACKEND) && BLI_SUBPROCESS_SUPPORT
@@ -418,6 +457,8 @@ This is used internally when Blender spawns worker sub-processes to compile GPU 
 
 **TBB huge pages (Linux)**
 
+Source: `source/creator/creator.cc` (lines 388-390).
+
 ```cpp
 #if defined(WITH_TBB_MALLOC) && defined(__linux__)
   scalable_allocation_mode(TBBMALLOC_USE_HUGE_PAGES, 1);
@@ -426,9 +467,29 @@ This is used internally when Blender spawns worker sub-processes to compile GPU 
 
 On Linux with the TBB memory allocator, Blender enables huge-page support for improved allocation performance.
 
+**macOS PSN argument patching (GUI bundle launch)**
+
+When Blender is launched as a GUI application bundle on macOS (e.g., from Finder), the OS passes a special `-psn` argument containing the process serial number. This must be stripped before argument parsing:
+
+Source: `source/creator/creator.cc` (lines 397-407).
+
+```cpp
+#if defined(__APPLE__) && !defined(WITH_PYTHON_MODULE) && !defined(WITH_HEADLESS)
+if (argc > 1) {
+  if (STREQ(argv[1], "-psn")) {
+    argv[1] = "";
+  }
+}
+#endif
+```
+
+This guard ensures the PSN handling only applies to regular GUI builds (not Python modules or headless builds). The PSN argument is zeroed out rather than removed to avoid argument index shifts.
+
 **Build date initialization**
 
 When built with `BUILD_DATE`, the commit timestamp is formatted into human-readable strings:
+
+Source: `source/creator/creator.cc` (lines 413-419).
 
 ```cpp
 #ifdef BUILD_DATE
@@ -442,6 +503,8 @@ strftime(build_commit_time, sizeof(build_commit_time), "%H:%M", tm);
 ### 4.3 Very early debug-memory switch
 
 Before most other initialization, Blender scans `argv` for debug flags:
+
+Source: `source/creator/creator.cc` (lines 398-426).
 
 ```cpp
 for (i = 0; i < argc; i++) {
@@ -462,6 +525,8 @@ This is important: some CLI flags affect startup **before** the normal argument 
 ### 4.4 Logging, context, executable path, and runtime-global setup
 
 After the very early memory and platform setup, logging is fully started and the context is created:
+
+Source: `source/creator/creator.cc` (lines 428-487).
 
 ```cpp
 CLG_init();
@@ -491,7 +556,9 @@ Key meaning:
 
 ### 4.5 Core type and subsystem registration
 
-Still in `main()`, before any arguments are processed, core C++ and DNA type infrastructure is registered:
+Still in `main()`, before any arguments are processed, core C++ type and subsystem registration is performed. DNA/SDNA initialization is done in the preceding step (section 4.4) via `DNA_sdna_current_init()` **before** `BKE_blender_globals_init()` allocates the global variable `G`, since `G.main` (the central `Main` datablock database) depends on DNA type metadata. `G.main` contains type-specific ListBase containers for all DNA datablocks (scenes, objects, meshes, materials, lights, cameras, etc.), whose struct layouts are defined by the DNA system:
+
+Source: `source/creator/creator.cc` (lines 489-497).
 
 ```cpp
 BKE_cpp_types_init();
@@ -511,6 +578,8 @@ At this stage Blender registers core C++/ID/modifier/depsgraph infrastructure be
 
 The CLI system is created and connected here:
 
+Source: `source/creator/creator.cc` (lines 501-509).
+
 ```cpp
 ba = BLI_args_create(argc, argv);
 main_args_setup(C, ba, false);
@@ -520,6 +589,8 @@ BLI_args_parse(ba, ARG_PASS_ENVIRONMENT, nullptr, nullptr);
 ```
 
 Then, after environment-affecting options are processed:
+
+Source: `source/creator/creator.cc` (lines 518-538).
 
 ```cpp
 BKE_appdir_init();           /* Resolves data/config/script directories. */
@@ -539,6 +610,8 @@ This order matters because some arguments change paths, threads, or global behav
 
 After the settings pass, the remaining media, rendering, and node subsystems are initialized:
 
+Source: `source/creator/creator.cc` (lines 545-561).
+
 ```cpp
 #ifdef WITH_CYCLES
   CCL_log_init(); /* Cycles log system. */
@@ -556,7 +629,11 @@ BKE_brush_system_init();
 BKE_particle_init_rng();
 ```
 
+**RNA initialization** (`RNA_init()`) sets up Blender's Runtime Type System (RNA/rBNA), which provides runtime reflection for all datablocks and operators. This allows the Python API, property panels, and other runtime introspection systems to work correctly. It must happen after argument parsing to respect debug flags, but before any UI or file loading occurs. The comment explicitly notes that `WM_main_playanim` (the animation player) can skip this step since it does not need the full runtime type system.
+
 Then a set of unconditionally-needed resources:
+
+Source: `source/creator/creator.cc` (lines 576-582).
 
 ```cpp
 /* Built-in fallback font, required even in background mode for text rendering. */
@@ -570,6 +647,8 @@ BKE_materials_init();
 
 Then two additional argument passes that were previously skipped:
 
+Source: `source/creator/creator.cc` (lines 586-588).
+
 ```cpp
 /* Pass 3: GUI-only settings (e.g. window start state). */
 if (G.background == 0) {
@@ -581,13 +660,39 @@ BLI_args_parse(ba, ARG_PASS_SETTINGS_FORCE, nullptr, nullptr);
 
 Then Blender switches to the main runtime/UI initialization stage:
 
+Source: `source/creator/creator.cc` (line 591).
+
 ```cpp
 WM_init(C, argc, argv);
 ```
 
+**Inside `WM_init()`**, among many subsystems (operators, panel types, space-types, icons, studio-lights, home-file loading), the **Python environment is initialized**:
+
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 318-319).
+
+```cpp
+#ifdef WITH_PYTHON
+  BPY_python_start(C, argc, argv);
+  BPY_python_reset(C);
+#else
+  UNUSED_VARS(argc, argv);
+#endif
+```
+
+Python initialization (via `BPY_python_start()`) is deferred until inside `WM_init()` because:
+
+- The Python module system depends on the RNA type system being already initialized (which happened earlier via `RNA_init()`).
+- Python initialization needs to load add-ons, which register operators and key-maps that are stored in the window-manager (part of the home-file).
+- The startup file (home-file) may contain Python code (e.g., animation drivers), so Python must be ready after the preferences and home-file are loaded.
+- The initialization order is: preferences → window-manager initialization → Python start → add-ons load → startup file post-processing.
+
+After Python is initialized, `CTX_py_init_set(C, true)` marks that Python is ready for use throughout the rest of the application.
+
 ### 4.8 Final parse and execution branch
 
 Once `WM_init()` has prepared the runtime, Blender explicitly frees the argument parser resources and then runs the **final** CLI pass:
+
+Source: `source/creator/creator.cc` (lines 610, 617-618).
 
 ```cpp
 /* Handles #ARG_PASS_FINAL. Default callback loads .blend files. */
@@ -599,6 +704,8 @@ BKE_blender_atexit_unregister(callback_main_atexit, &app_init_data);
 ```
 
 Execution then splits into GUI or background mode:
+
+Source: `source/creator/creator.cc` (lines 633-654).
 
 ```cpp
 if (G.background) {
@@ -634,6 +741,8 @@ So the bootstrapping boundary is:
 
 A source-level hint for its meaning appears in `source/blender/blenkernel/BKE_global.hh`:
 
+Source: `source/blender/blenkernel/BKE_global.hh` (line 74).
+
 ```cpp
 /**
  * Blender is running without any Windows or OpenGLES context.
@@ -644,6 +753,8 @@ bool background;
 
 And in `source/creator/creator_args.cc`, the CLI handler enables it directly:
 
+Source: `source/creator/creator_args.cc` (lines 1079-1098).
+
 ```cpp
 static void background_mode_set()
 {
@@ -652,7 +763,7 @@ static void background_mode_set()
 }
 ```
 
-> **5.1.1 update:** Background mode is now also forced for `WITH_HEADLESS` builds via `#if defined(WITH_PYTHON_MODULE) || defined(WITH_HEADLESS)` in `creator.cc`. For those paths `main_signal_setup_background()` is **not** called — it is only called from the `else` branch (normal `--background` flag execution).
+Background mode is also forced for `WITH_HEADLESS` builds via `#if defined(WITH_PYTHON_MODULE) || defined(WITH_HEADLESS)` in `creator.cc`. For those paths `main_signal_setup_background()` is not called and only runs from the `else` branch in normal `--background` execution.
 
 ### What it is used for
 
@@ -710,6 +821,8 @@ flowchart TD
 
 **Phase A – Windowing and input (GUI only)**
 
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 203-207).
+
 ```cpp
 if (!G.background) {
   wm_ghost_init(C);  /* Creates the GHOST windowing system; assigns C to the GHOST instance. */
@@ -719,6 +832,8 @@ if (!G.background) {
 ```
 
 **Phase B – Operator, panel, menu, gizmo, and undo type registration**
+
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 209-227).
 
 ```cpp
 BKE_addon_pref_type_init();
@@ -737,6 +852,8 @@ ED_undosys_type_init();
 
 **Phase C – Editor callback wiring**
 
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 220-227).
+
 ```cpp
 BKE_library_callback_free_notifier_reference_set(WM_main_remove_notifier_reference);
 BKE_region_callback_free_gizmomap_set(wm_gizmomap_remove);
@@ -747,6 +864,8 @@ DEG_editors_set_update_cb(ED_render_id_flush_update, ED_render_scene_update);
 ```
 
 **Phase D – Editor space types and font/language init**
+
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 229-238).
 
 ```cpp
 ED_spacetypes_init();      /* Registers all editor space types (3D Viewport, NLA, etc.). */
@@ -760,6 +879,8 @@ BLT_lang_set(nullptr);    /* Must run before any .blend reading; versioning may 
 
 **Phase E – Icons, previews, message bus, studio lights**
 
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 243-251).
+
 ```cpp
 BKE_icons_init(BIFICONID_LAST_STATIC);
 BKE_preview_images_init();  /* Also runs in background mode for scripts using preview icons. */
@@ -770,6 +891,8 @@ BKE_studiolight_init();   /* Must precede home-file loading; versioning needs a 
 ```
 
 **Phase F – Home file / startup file read**
+
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 271-289).
 
 ```cpp
 wmHomeFileRead_Params read_homefile_params{};
@@ -789,6 +912,8 @@ BLT_lang_set(nullptr);    /* Called again to apply locale from the loaded prefer
 This reads both `startup.blend` (scene/workspace data) and `userpref.blend` (user preferences) in one call. When `G.factory_startup` is true, built-in defaults are used instead.
 
 **Phase G – File system, GPU initialization (GUI only)**
+
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 292-314).
 
 ```cpp
 ED_file_init();   /* Initializes the file browser; can use user preference paths now. */
@@ -818,6 +943,8 @@ ED_spacemacros_init();
 
 **Phase H – Python runtime**
 
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 317-334).
+
 ```cpp
 #ifdef WITH_PYTHON
   BPY_python_start(C, argc, argv);
@@ -826,7 +953,7 @@ ED_spacemacros_init();
   UNUSED_VARS(argc, argv);
 #endif
 
-/* 5.1.1: After Python starts, set the GHOST console window state (GUI only). */
+/* In Blender 5.1.2, after Python starts, set the GHOST console window state (GUI only). */
 if (!G.background) {
   GHOST_ISystem *ghost_system = GHOST_ISystem::getSystem();
   if (wm_start_with_console) {
@@ -840,16 +967,16 @@ if (!G.background) {
 ED_render_clear_mtex_copybuf();
 ```
 
-Python is started **after** the home file has been read so that key-maps stored in the `wmWindowManager` (which is blend-file data) already exist when add-on key-map registrations run.
-
-> **5.1.1 addition:** After `BPY_python_reset`, GHOST sets the console window visibility state (Windows) and `ED_render_clear_mtex_copybuf()` is called before the history file is read.
+Python is started **after** the home file has been read so that key-maps stored in the `wmWindowManager` (which is blend-file data) already exist when add-on key-map registrations run. In Blender 5.1.2, after `BPY_python_reset`, GHOST sets the console window visibility state (Windows) and `ED_render_clear_mtex_copybuf()` is called before the history file is read.
 
 **Phase I – History, recent searches, key configuration**
+
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 336-350).
 
 ```cpp
 wm_history_file_read();   /* Loads the recently opened files list. */
 
-/* 5.1.1: Cache last library path from home-file read. */
+/* In Blender 5.1.2, cache last library path from home-file read. */
 STRNCPY(G.filepath_last_library, BKE_main_blendfile_path_from_global());
 
 if (!G.background) {
@@ -865,6 +992,8 @@ WM_keyconfig_init(C);
 
 **Phase J – Add-on and extension loading, final key-map update**
 
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 354-359).
+
 ```cpp
 /* Calls bpy.utils.load_scripts_extensions() via Python. */
 wm_init_scripts_extensions_once(C);
@@ -877,6 +1006,8 @@ wm_homefile_read_post(C, params_file_read_post);
 ```
 
 The add-on loading call expands to:
+
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 408-413).
 
 ```cpp
 static void wm_init_scripts_extensions_once(bContext *C)
@@ -893,6 +1024,8 @@ So all installed add-ons and app-template extensions are loaded at this point th
 ### Key design note on startup inter-dependencies
 
 The source code itself documents why this ordering is non-trivial:
+
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 255-270).
 
 ```text
 NOTE(@ideasman42): Startup file and order of initialization.
@@ -911,6 +1044,8 @@ and other sub-systems, have inter-dependencies, for example:
 
 `WM_init()` uses the CLI-controlled flag `G.factory_startup` while reading the home file:
 
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 276-282).
+
 ```cpp
 read_homefile_params.use_factory_settings = G.factory_startup;
 wm_homefile_read_ex(C, &read_homefile_params, nullptr, &params_file_read_post);
@@ -925,6 +1060,8 @@ So `--factory-startup` directly changes how the initial home file/preferences ar
 **File:** `source/blender/windowmanager/intern/wm.cc`
 
 Once `WM_init()` completes and `WM_init_splash_on_startup()` has optionally shown the splash screen, the process enters the infinite GUI event loop:
+
+Source: `source/blender/windowmanager/intern/wm.cc` (lines 596-615).
 
 ```cpp
 void WM_main(bContext *C)
@@ -969,6 +1106,8 @@ This is a **blocking infinite loop** — it never returns under normal operation
 **File:** `source/blender/windowmanager/intern/wm_init_exit.cc`
 
 `WM_exit()` is the top-level shutdown entry point:
+
+Source: `source/blender/windowmanager/intern/wm_init_exit.cc` (lines 692-700).
 
 ```cpp
 void WM_exit(bContext *C, const int exit_code)
@@ -1015,7 +1154,7 @@ void WM_exit(bContext *C, const int exit_code)
 | 26    | Autosave + temp dir                   | `wm_autosave_delete()`, `BKE_tempdir_session_purge()`                                                                                      |
 | 27    | Logging                               | `CLG_exit()` — must be last; nothing may log after this                                                                                    |
 
-> **5.1.1 update:** The shutdown sequence was significantly reordered. The most important change is that `BKE_blender_free()` (step 6) now runs **before** animation copy buffers, gizmo tables, UI list types, and Python. The old note that Python runs "before `BKE_blender_free`" is no longer correct; the code comment in `wm_init_exit.cc` explicitly documents this was changed in Blender 2.5.
+In Blender 5.1.2, the shutdown sequence keeps `BKE_blender_free()` (step 6) before animation copy buffers, gizmo tables, UI list types, and Python. The code comment in `wm_init_exit.cc` documents this ordering change from older behavior.
 
 Notice that `CLG_exit()` is intentionally the **last** thing shut down because almost every subsystem above may log warning or info messages during its own teardown.
 
@@ -1028,6 +1167,8 @@ Notice that `CLG_exit()` is intentionally the **last** thing shut down because a
 ### 8.1 `Global G` and `UserDef U`
 
 In `source/blender/blenkernel/intern/blender.cc`:
+
+Source: `source/blender/blenkernel/intern/blender.cc` (lines 58-216).
 
 ```cpp
 Global G;
@@ -1061,6 +1202,8 @@ This shows that bootstrapping creates and resets the top-level runtime state ver
 
 From `source/blender/blenkernel/BKE_global.hh`:
 
+Source: `source/blender/blenkernel/BKE_global.hh` (lines 36, 74, 81, 121, 141, 158).
+
 ```cpp
 Main *main;
 ...
@@ -1075,6 +1218,8 @@ int fileflags;
 ```
 
 The comments in the same file explicitly tie these fields to startup behavior:
+
+Source: `source/blender/blenkernel/BKE_global.hh` (lines 68-87, 134-140).
 
 ```cpp
 /**
@@ -1099,6 +1244,8 @@ int debug;
 ### 8.3 `ApplicationState app_state`
 
 `source/creator/creator.cc` also defines a smaller startup-global state:
+
+Source: `source/creator/creator.cc` (lines 174-182).
 
 ```cpp
 ApplicationState app_state = []() {
@@ -1125,6 +1272,8 @@ This object stores:
 
 Blender does not hard-code all parsing inside `main()`. It uses the reusable `BLI_args` API from `source/blender/blenlib/BLI_args.h`:
 
+Source: `source/blender/blenlib/BLI_args.h` (lines 26, 28, 44, 63).
+
 ```cpp
 using BA_ArgCallback = int (*)(int argc, const char **argv, void *data);
 
@@ -1139,6 +1288,8 @@ So each option is registered with a callback and then executed by pass.
 
 In `source/creator/creator_intern.h`:
 
+Source: `source/creator/creator_intern.h` (lines 78-92).
+
 ```cpp
 enum {
   ARG_PASS_ENVIRONMENT = 1,   /* Thread count, env paths — before BKE_appdir_init. */
@@ -1151,9 +1302,19 @@ enum {
 
 This gives Blender a **staged startup parser**, not a single one-shot parse. The distinction between passes 3 and 4 means some options can force-apply regardless of headless mode, while others are silently skipped when there is no display.
 
+**Detailed pass semantics:**
+
+- **ARG_PASS_ENVIRONMENT (1):** Thread count, environment paths, GPU backend selection. Must run **before** `BKE_appdir_init()` because path options affect where assets and scripts are discovered.
+- **ARG_PASS_SETTINGS (2):** Background-mode flag assignment, factory-startup override, debug flags, animation player launch. The `--background` / `-b` flag is processed here, which `main_signal_setup()` depends on. The animation player can exit Blender early if invoked.
+- **ARG_PASS_SETTINGS_GUI (3):** GUI-only settings like window start state, stereo mode, splash screen behavior. **Skipped entirely in background mode** (`if (G.background == 0)`) so GUI-specific options never run headless.
+- **ARG_PASS_SETTINGS_FORCE (4):** Settings that **always run** regardless of headless mode (e.g., factory-startup defaults, forced shader compilation flags). Applied after SETTINGS_GUI so it can override GUI-skipped options.
+- **ARG_PASS_FINAL (5):** File loads, render jobs, Python scripts. Runs **after** `WM_init()` has set up operators, keymaps, and the asset system. Default callback is `main_args_handle_load_file()` which loads unknown trailing arguments as `.blend` files. Commands like `--render-frame`, `--python`, `--command` are processed here and may be deferred until runtime finishes initializing.
+
 ### 9.3 `main_args_setup()` registers the options
 
 In `source/creator/creator_args.cc`:
+
+Source: `source/creator/creator_args.cc` (lines 2917-3252).
 
 ```cpp
 void main_args_setup(bContext *C, bArgs *ba, bool all)
@@ -1161,18 +1322,18 @@ void main_args_setup(bContext *C, bArgs *ba, bool all)
   ...
   BLI_args_pass_set(ba, ARG_PASS_ENVIRONMENT);
   BLI_args_add(ba, nullptr, "--python-use-system-env", ...);
-  BLI_args_add(ba, nullptr, "--python-use-user-env", ...);   /* 5.1.1: new */
+  BLI_args_add(ba, nullptr, "--python-use-user-env", ...);   /* Available in Blender 5.1.2. */
   BLI_args_add(ba, nullptr, "--env-system-datafiles", ...);
   BLI_args_add(ba, nullptr, "--env-system-scripts", ...);
   BLI_args_add(ba, nullptr, "--env-system-python", ...);
   BLI_args_add(ba, nullptr, "--env-system-extensions", ...);
   BLI_args_add(ba, "-t", "--threads", ...);
-  /* 5.1.1: log and GPU args moved into ENVIRONMENT pass */
+  /* In Blender 5.1.2, log and GPU args are in the ENVIRONMENT pass. */
   BLI_args_add(ba, nullptr, "--log", ...); /* and --log-level, --log-show-source, etc. */
   BLI_args_add(ba, nullptr, "--gpu-backend", ...);
   BLI_args_add(ba, nullptr, "--gpu-vsync", ...);
-  BLI_args_add(ba, nullptr, "--gpu-compilation-subprocesses", ...); /* 5.1.1: new */
-  BLI_args_add(ba, nullptr, "--profile-gpu", ...);                  /* 5.1.1: new */
+  BLI_args_add(ba, nullptr, "--gpu-compilation-subprocesses", ...); /* Available in Blender 5.1.2. */
+  BLI_args_add(ba, nullptr, "--profile-gpu", ...);                  /* Available in Blender 5.1.2. */
 
   BLI_args_pass_set(ba, ARG_PASS_SETTINGS);
   BLI_args_add(ba, "-h", "--help", ...);
@@ -1181,14 +1342,14 @@ void main_args_setup(bContext *C, bArgs *ba, bool all)
   BLI_args_add(ba, "-Y", "--disable-autoexec", ...);
   BLI_args_add(ba, nullptr, "--offline-mode", ...);
   BLI_args_add(ba, nullptr, "--online-mode", ...);
-  BLI_args_add(ba, nullptr, "--disable-crash-handler", ...); /* 5.1.1: new */
-  BLI_args_add(ba, nullptr, "--disable-abort-handler", ...); /* 5.1.1: new */
-  BLI_args_add(ba, "-q", "--quiet", ...);                    /* 5.1.1: new */
+  BLI_args_add(ba, nullptr, "--disable-crash-handler", ...); /* Available in Blender 5.1.2. */
+  BLI_args_add(ba, nullptr, "--disable-abort-handler", ...); /* Available in Blender 5.1.2. */
+  BLI_args_add(ba, "-q", "--quiet", ...);                    /* Available in Blender 5.1.2. */
   BLI_args_add(ba, "-b", "--background", ...);
   BLI_args_add(ba, "-c", "--command", ...);
-  BLI_args_add(ba, nullptr, "--qos", ...);                    /* 5.1.1: new */
-  BLI_args_add(ba, nullptr, "--disable-depsgraph-on-file-load", ...); /* 5.1.1: new */
-  BLI_args_add(ba, nullptr, "--disable-liboverride-auto-resync", ...); /* 5.1.1: new */
+  BLI_args_add(ba, nullptr, "--qos", ...);                    /* Available in Blender 5.1.2. */
+  BLI_args_add(ba, nullptr, "--disable-depsgraph-on-file-load", ...); /* Available in Blender 5.1.2. */
+  BLI_args_add(ba, nullptr, "--disable-liboverride-auto-resync", ...); /* Available in Blender 5.1.2. */
   BLI_args_add(ba, nullptr, "--factory-startup", ...);
 
   BLI_args_pass_set(ba, ARG_PASS_FINAL);
@@ -1206,6 +1367,8 @@ This is the main registration table for Blender's startup CLI behavior.
 ### 9.4 Order of arguments is semantically important
 
 Blender's own help text says:
+
+Source: `source/creator/creator_args.cc` (lines 871-878).
 
 ```cpp
 PRINT("Argument Order:\n");
@@ -1246,8 +1409,10 @@ So some arguments **do work immediately** and can be overwritten by later file l
 
 **Background mode** (`WITH_PYTHON_MODULE` / `WITH_HEADLESS` path)
 
+Source: `source/creator/creator.cc` (lines 564-568).
+
 ```cpp
-/* 5.1.1: WITH_HEADLESS builds now also force background mode. */
+/* In Blender 5.1.2, WITH_HEADLESS builds also force background mode. */
 #if defined(WITH_PYTHON_MODULE) || defined(WITH_HEADLESS)
   G.background = true;
   BKE_sound_force_device("None");
@@ -1255,6 +1420,8 @@ So some arguments **do work immediately** and can be overwritten by later file l
 ```
 
 **Background mode** (regular `--background` flag path)
+
+Source: `source/creator/creator_args.cc` (lines 1079-1098).
 
 ```cpp
 static void background_mode_set()
@@ -1265,6 +1432,8 @@ static void background_mode_set()
 ```
 
 **Factory startup**
+
+Source: `source/creator/creator_args.cc` (lines 1812-1819).
 
 ```cpp
 static int arg_handle_factory_startup_set(...)
@@ -1277,11 +1446,15 @@ static int arg_handle_factory_startup_set(...)
 
 **Python file execution**
 
+Source: `source/creator/creator_args.cc` (lines 2590-2603).
+
 ```cpp
 BPY_CTX_SETUP(ok = BPY_run_filepath(C, filepath, nullptr));
 ```
 
 **Render-frame execution**
+
+Source: `source/creator/creator_args.cc` (line 2425).
 
 ```cpp
 RE_RenderAnim(re, bmain, scene, nullptr, nullptr, frame, frame, scene->r.frame_step);
@@ -1294,6 +1467,8 @@ RE_RenderAnim(re, bmain, scene, nullptr, nullptr, frame, frame, scene->r.frame_s
 ### 11.1 Unknown / trailing non-option arguments become blend files
 
 `main_args_handle_load_file()` in `creator_args.cc` is used as the default callback in the final parse pass:
+
+Source: `source/creator/creator_args.cc` (lines 2883-2896).
 
 ```cpp
 int main_args_handle_load_file(int /*argc*/, const char **argv, void *data)
@@ -1318,6 +1493,8 @@ So, after registered options are handled, remaining arguments are assumed to be 
 
 Blender stores deferred callbacks in `main_arg_deferred_setup()`:
 
+Source: `source/creator/creator_args.cc` (lines 489-505).
+
 ```cpp
 static void main_arg_deferred_setup(BA_ArgCallback func, int argc, const char **argv, void *data)
 {
@@ -1332,6 +1509,8 @@ static void main_arg_deferred_setup(BA_ArgCallback func, int argc, const char **
 ```
 
 And later executes them with:
+
+Source: `source/creator/creator_args.cc` (lines 521-527).
 
 ```cpp
 int main_arg_deferred_handle()
@@ -1350,6 +1529,8 @@ This is how `--command` and similar background operations wait until Python/UI/r
 
 `source/creator/creator_signals.cc` installs signal handlers after the settings pass:
 
+Source: `source/creator/creator_signals.cc` (lines 209-217).
+
 ```cpp
 void main_signal_setup()
 {
@@ -1365,6 +1546,8 @@ void main_signal_setup()
 ```
 
 In background mode Blender also wires `Ctrl-C` / `SIGINT` to the global break flag:
+
+Source: `source/creator/creator_signals.cc` (lines 70-74, 231-238).
 
 ```cpp
 static void sig_handle_blender_esc(int sig)
@@ -1392,18 +1575,20 @@ From the source code, Blender bootstrapping is organized like this:
 
 1. **Entry** arrives in `source/creator/creator.cc::main()` (or `wWinMain()` / Python-module alias).
 2. `main()` performs **very early platform, allocator, logging, and context setup**, including LD_PRELOAD restore, TBB huge pages, unbuffered stdout (debug), and Win32 UTF-16 arg conversion.
-3. `BKE_blender_globals_init()` creates the runtime-global state (`G`, `G_MAIN`, default flags).
-4. `BKE_callback_global_init()` registers the global callback system before any file loading.
-5. `main_args_setup()` + `BLI_args_parse()` implement a **five-pass CLI startup pipeline** (ENVIRONMENT → SETTINGS → SETTINGS_GUI → SETTINGS_FORCE → FINAL).
-6. `main_signal_setup()` installs crash/abort handlers after `ARG_PASS_SETTINGS` so background mode is already known.
-7. Core media/render subsystems initialize (`IMB`, `MOV`, `RNA`, `RE`, nodes, sound, materials).
-8. `ARG_PASS_SETTINGS_GUI` and `ARG_PASS_SETTINGS_FORCE` run just before `WM_init()`.
-9. `WM_init()` performs the **real runtime hand-off**: GHOST, operators, editor types, home file, GPU, Python, add-ons, key configuration.
-10. `ARG_PASS_FINAL` runs after `WM_init()` to load blend files and execute Python scripts/render tasks.
-11. Startup ends in either:
+3. Before global state is allocated, `main()` initializes executable-path and core pre-global infrastructure: `BKE_appdir_program_path_init()`, `BLI_threadapi_init()`, and `DNA_sdna_current_init()`.
+4. `BKE_blender_globals_init()` creates the runtime-global state (`G`, `G_MAIN`, default flags).
+5. Core type registration runs (`BKE_cpp_types_init()`, `BKE_idtype_init()`, modifier/FX/depsgraph node type registration), then `BKE_callback_global_init()` registers the global callback system.
+6. `main_args_setup()` + `BLI_args_parse()` implement a **five-pass CLI startup pipeline** (ENVIRONMENT → SETTINGS → SETTINGS_GUI → SETTINGS_FORCE → FINAL).
+7. After `ARG_PASS_ENVIRONMENT`, Blender initializes runtime path/thread facilities: `BKE_appdir_init()`, `BLI_task_scheduler_init()`, `fftw::initialize_float()`.
+8. `main_signal_setup()` installs crash/abort handlers after `ARG_PASS_SETTINGS` so background mode is already known.
+9. Core media/render subsystems initialize (`IMB`, `MOV`, `RNA`, `RE`, nodes, sound, materials).
+10. `ARG_PASS_SETTINGS_GUI` and `ARG_PASS_SETTINGS_FORCE` run just before `WM_init()`.
+11. `WM_init()` performs the **real runtime hand-off**: GHOST, operators, editor types, home file, GPU, Python, add-ons, key configuration.
+12. `ARG_PASS_FINAL` runs after `WM_init()` to load blend files and execute Python scripts/render tasks.
+13. Startup ends in either:
     - `WM_main(C)` for the interactive GUI loop (four-step: events → handlers → notifiers → draw), or
     - deferred background execution + `WM_exit(C)` for headless automation.
-12. `WM_exit_ex()` tears down all subsystems in a fixed safe order, with `CLG_exit()` last.
+14. `WM_exit_ex()` tears down all subsystems in a fixed safe order, with `CLG_exit()` last.
 
 ## 14) Source-level conclusion
 

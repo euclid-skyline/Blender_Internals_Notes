@@ -146,7 +146,16 @@ Representative examples from `source/blender/CMakeLists.txt` and child files inc
 - `bf::render`
 - `bf::imbuf`
 - `bf::sequencer`
+- `bf_rna`
 - many `bf_editor_*`, `bf_io_*`, `bf_nodes_*`, and other subsystem libraries.
+
+`bf::rna` is not defined as a namespaced CMake alias target in this codebase. The RNA library target is created as `bf_rna` in `source/blender/makesrna/intern/CMakeLists.txt` via:
+
+```cmake
+blender_add_lib(bf_rna "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
+```
+
+So the correct target name to reference in target-level dependency declarations is `bf_rna`, not `bf::rna`.
 
 ---
 

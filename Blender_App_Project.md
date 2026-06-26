@@ -187,15 +187,17 @@ add_executable(blender ${EXETYPE} ${SRC})
 
 So the final app target named **`blender`** is essentially the last step that links together the major internal subsystem libraries already created elsewhere.
 
+The executable link step itself is `target_link_libraries(blender PRIVATE ${LIB})`, so `bf_rna` does not appear on the `blender` link line directly. It is consumed transitively through libraries in `${LIB}` that declare `add_dependencies(... bf_rna)` and use RNA-generated headers and metadata during their own build.
+
 There are also important conditional variants in the same file:
 
 - if `WITH_PYTHON_MODULE` is enabled, `blender` is built as a **Python module** instead of the normal desktop executable,
 - on Windows, an additional **`blender-launcher`** target is created,
 - and if `WITH_BUILDINFO` is enabled, the `buildinfo` custom target and `buildinfoobj` object library are created and attached.
 
-### Diagram 2: Direct inputs of the `blender` target
+### Diagram 2: Dependency inputs of the `blender` target
 
-This diagram isolates the direct library and custom-target inputs that feed the final `blender` target.
+This diagram isolates the dependency inputs that feed the final `blender` target, and it also shows one representative transitive library path for `bf_rna`.
 
 ```mermaid
 flowchart LR
@@ -206,22 +208,45 @@ flowchart LR
   E[bf::dna] --> Z
   F[bf::gpu] --> Z
   G[bf::imbuf] --> Z
-  H[bf::render] --> Z
-  I[bf::sequencer] --> Z
-  J[bf::windowmanager] --> Z
-  K[buildinfo] --> Z
-  L[buildinfoobj] --> Z
+  H[bf::imbuf::movie] --> Z
+  I[bf::intern::clog] --> Z
+  J[bf::intern::guardedalloc] --> Z
+  K[bf::render] --> Z
+  L[bf::sequencer] --> Z
+  M[bf::windowmanager] --> Z
+  N[buildinfo] --> Z
+  O[buildinfoobj] --> Z
+  P[bf::blenloader]
+  Q[bf::nodes]
+  R[bf_rna]
+
+  R -.-> A
+  R -.-> D
+  R -.-> M
+  R -.-> P
+  R -.-> Q
+  P -.-> A
+  P -.-> L
+  P -.-> M
+  Q -.-> A
+  Q -.-> K
+  Q -.-> L
+  Q -.-> M
 
   classDef executable fill:#d6f5d6,stroke:#2e8b57,stroke-width:2px,color:#111;
   classDef library fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111;
   classDef custom fill:#fde2e4,stroke:#c2410c,stroke-width:2px,color:#111;
 
   class Z executable;
-  class A,B,C,D,E,F,G,H,I,J,L library;
-  class K custom;
+  class A,B,C,D,E,F,G,H,I,J,K,L,M,O library;
+  class N custom;
+  class P,Q library;
+  style R fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#111;
 ```
 
 This is a simplified view of the main executable link target as declared in `source/creator/CMakeLists.txt`.
+
+`bf_rna` sits one layer below `blender`: it is not linked directly by the executable, but it is required by libraries such as `bf::blenkernel`, `bf::depsgraph`, `bf::windowmanager`, `bf::blenloader`, and `bf::nodes`. In the direct `blender` link set, `bf::blenloader` feeds `bf::blenkernel`, `bf::sequencer`, and `bf::windowmanager`, while `bf::nodes` feeds `bf::blenkernel`, `bf::render`, `bf::sequencer`, and `bf::windowmanager`. Those libraries are part of the dependency graph around `${LIB}`, so they bring the RNA layer into the build graph before `blender` links the final library bundle.
 
 ---
 

@@ -211,19 +211,24 @@ At a high level, the main project produces these important targets.
 
 The `source/` tree also creates a large number of internal `bf_*` libraries. Those are not end-user apps, but they are the **main internal link targets** that feed into `blender`.
 
-Representative examples from `source/blender/CMakeLists.txt` and child files include:
+Important `bf_*` library targets are summarized below.
 
-- `bf::blenkernel`
-- `bf::blenlib`
-- `bf::depsgraph`
-- `bf::windowmanager`
-- `bf::gpu`
-- `bf::render`
-- `bf::imbuf`
-- `bf::sequencer`
-- `bf_rna`
-- many `bf_editor_*`, `bf_io_*`, `bf_nodes_*`, and other subsystem libraries.
-
+| Library Target     | Alias               | Defined In                                      | Role                                                 |
+| ------------------ | ------------------- | ----------------------------------------------- | ---------------------------------------------------- |
+| `bf_blenkernel`    | `bf::blenkernel`    | `source/blender/blenkernel/CMakeLists.txt`      | Core kernel/runtime subsystem library                |
+| `bf_blenlib`       | `bf::blenlib`       | `source/blender/blenlib/CMakeLists.txt`         | Core utility/foundation library                      |
+| `bf_bmesh`         | `bf::bmesh`         | `source/blender/bmesh/CMakeLists.txt`           | BMesh modeling/edit data library                     |
+| `bf_depsgraph`     | `bf::depsgraph`     | `source/blender/depsgraph/CMakeLists.txt`       | Dependency graph evaluation library                  |
+| `bf_dna`           | `bf::dna`           | `source/blender/makesdna/intern/CMakeLists.txt` | DNA schema/SDNA compatibility library                |
+| `bf_dna_defaults`  | none                | `source/blender/makesdna/intern/CMakeLists.txt` | Generated DNA defaults data library                  |
+| `bf_rna`           | none                | `source/blender/makesrna/intern/CMakeLists.txt` | RNA reflection and property access library           |
+| `bf_draw`          | `bf::draw`          | `source/blender/draw/CMakeLists.txt`            | Viewport draw manager library                        |
+| `bf_gpu`           | `bf::gpu`           | `source/blender/gpu/CMakeLists.txt`             | GPU abstraction and rendering support library        |
+| `bf_imbuf`         | `bf::imbuf`         | `source/blender/imbuf/CMakeLists.txt`           | Image buffer and image I/O library                   |
+| `bf_nodes`         | `bf::nodes`         | `source/blender/nodes/CMakeLists.txt`           | Node system core library                             |
+| `bf_render`        | `bf::render`        | `source/blender/render/CMakeLists.txt`          | Render pipeline library                              |
+| `bf_sequencer`     | `bf::sequencer`     | `source/blender/sequencer/CMakeLists.txt`       | Video sequence editor library                        |
+| `bf_windowmanager` | `bf::windowmanager` | `source/blender/windowmanager/CMakeLists.txt`   | Event loop, operators, and UI window manager library |
 
 ### Diagram 3: Executable, library, and custom targets by kind
 
@@ -254,8 +259,9 @@ flowchart TD
     L7[bf::sequencer]
     L8[bf::depsgraph]
     L9[bf::dna]
-    L10[buildinfoobj]
-    L11[BlendThumb or blender_cpu_check optional]
+    L10[bf_rna]
+    L11[buildinfoobj]
+    L12[BlendThumb or blender_cpu_check optional]
   end
 
   subgraph CUSTOM[Custom targets]
@@ -280,9 +286,14 @@ flowchart TD
   L8 --> E1
   L9 --> E1
   L10 --> E1
+  L11 --> E1
 
   C1 -. generated build metadata .-> E1
-  L11 -. optional platform or feature support .-> E1
+  L12 -. optional platform or feature support .-> E1
+
+  style EXEC fill:#334155,stroke:#1e293b,stroke-width:2px,color:#ffffff
+  style LIBS fill:#0f766e,stroke:#0f5f59,stroke-width:2px,color:#ffffff
+  style CUSTOM fill:#b45309,stroke:#92400e,stroke-width:2px,color:#ffffff
 
   classDef executable fill:#d6f5d6,stroke:#2e8b57,stroke-width:2px,color:#111;
   classDef library fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111;
@@ -291,7 +302,7 @@ flowchart TD
 
   class P root;
   class E1,E2,E3,E4,E5,E6,E7,E8 executable;
-  class L1,L2,L3,L4,L5,L6,L7,L8,L9,L10,L11 library;
+  class L1,L2,L3,L4,L5,L6,L7,L8,L9,L10,L11,L12 library;
   class C1,C2,C3,C4,C5 custom;
 ```
 
@@ -339,3 +350,7 @@ So the best mental model is:
 3. `source/blender/CMakeLists.txt`
 4. `source/creator/CMakeLists.txt`
 5. `tests/CMakeLists.txt`
+
+
+
+

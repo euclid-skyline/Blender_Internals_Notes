@@ -201,24 +201,29 @@ This diagram isolates the dependency inputs that feed the final `blender` target
 
 ```mermaid
 flowchart LR
-  A[bf::blenkernel] --> Z[blender]
-  B[bf::blenlib] --> Z
-  C[bf::bmesh] --> Z
-  D[bf::depsgraph] --> Z
-  E[bf::dna] --> Z
-  F[bf::gpu] --> Z
-  G[bf::imbuf] --> Z
-  H[bf::imbuf::movie] --> Z
-  I[bf::intern::clog] --> Z
-  J[bf::intern::guardedalloc] --> Z
-  K[bf::render] --> Z
-  L[bf::sequencer] --> Z
-  M[bf::windowmanager] --> Z
-  N[buildinfo] --> Z
-  O[buildinfoobj] --> Z
-  P[bf::blenloader]
-  Q[bf::nodes]
-  R[bf_rna]
+  subgraph DIRECT[Direct libraries linked by `blender`]
+    A[bf::blenkernel] --> Z[blender]
+    B[bf::blenlib] --> Z
+    C[bf::bmesh] --> Z
+    D[bf::depsgraph] --> Z
+    E[bf::dna] --> Z
+    F[bf::gpu] --> Z
+    G[bf::imbuf] --> Z
+    H[bf::imbuf::movie] --> Z
+    I[bf::intern::clog] --> Z
+    J[bf::intern::guardedalloc] --> Z
+    K[bf::render] --> Z
+    L[bf::sequencer] --> Z
+    M[bf::windowmanager] --> Z
+    N[buildinfo] --> Z
+    O[buildinfoobj] --> Z
+  end
+
+  subgraph TRANSITIVE[Transitive RNA consumers]
+    P[bf::blenloader]
+    Q[bf::nodes]
+    R[bf_rna]
+  end
 
   R -.-> A
   R -.-> D
@@ -236,12 +241,13 @@ flowchart LR
   classDef executable fill:#d6f5d6,stroke:#2e8b57,stroke-width:2px,color:#111;
   classDef library fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111;
   classDef custom fill:#fde2e4,stroke:#c2410c,stroke-width:2px,color:#111;
+  classDef transitive fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#111;
 
   class Z executable;
   class A,B,C,D,E,F,G,H,I,J,K,L,M,O library;
   class N custom;
-  class P,Q library;
-  style R fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#111;
+  class P,Q transitive;
+  class R transitive;
 ```
 
 This is a simplified view of the main executable link target as declared in `source/creator/CMakeLists.txt`.

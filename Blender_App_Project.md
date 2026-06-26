@@ -9,13 +9,12 @@
 
 - [1) What the main `CMakeLists.txt` is doing](#1-what-the-main-cmakeliststxt-is-doing)
 - [2) Top-level build graph in the root project](#2-top-level-build-graph-in-the-root-project)
+  - [Diagram 1: Top-level project and target flow](#diagram-1-top-level-project-and-target-flow)
 - [3) Where the final application target comes from](#3-where-the-final-application-target-comes-from)
+  - [Diagram 2: Direct inputs of the `blender` target](#diagram-2-direct-inputs-of-the-blender-target)
 - [4) Main targets produced by the project](#4-main-targets-produced-by-the-project)
-- [5) Mermaid flowcharts](#5-mermaid-flowcharts)
-  - [5.1 Top-level project and target flow](#51-top-level-project-and-target-flow)
-  - [5.2 Direct inputs of the `blender` target](#52-direct-inputs-of-the-blender-target)
-  - [5.3 Executable, library, and custom targets by kind](#53-executable-library-and-custom-targets-by-kind)
-- [6) Source-level conclusion](#6-source-level-conclusion)
+  - [Diagram 3: Executable, library, and custom targets by kind](#diagram-3-executable-library-and-custom-targets-by-kind)
+- [5) Source-level conclusion](#5-source-level-conclusion)
 
 ---
 
@@ -75,6 +74,52 @@ This tells us the standard build order is:
 
 That ordering matters because `source/creator` links against libraries created earlier in the graph.
 
+### Diagram 1: Top-level project and target flow
+
+This diagram shows how the root `Blender` project fans out into top-level subdirectories and converges again at `source/creator` for final app assembly.
+
+```mermaid
+flowchart TD
+  A[project: Blender] --> B[Root CMake orchestration]
+  B --> C[intern]
+  B --> D[extern]
+  B --> E[source]
+  B --> F[tests]
+  B --> G[source/creator]
+
+  C --> C1[internal support libraries]
+  D --> D1[third-party dependency libraries]
+
+  E --> E1[bf_* subsystem libraries]
+  E --> E2[build tools: datatoc, makesdna, makesrna, shader_tool, msgfmt]
+  E --> E3[optional blender-thumbnailer]
+
+  C1 --> G
+  D1 --> G
+  E1 --> G
+
+  G --> G1[buildinfo]
+  G --> G2[buildinfoobj]
+  G --> G3[blender]
+  G --> G4[blender-launcher on Windows]
+
+  F --> F1[Python tests]
+  F --> F2[GTests]
+  F --> F3[coverage targets]
+
+  classDef executable fill:#d6f5d6,stroke:#2e8b57,stroke-width:2px,color:#111;
+  classDef library fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111;
+  classDef custom fill:#fde2e4,stroke:#c2410c,stroke-width:2px,color:#111;
+  classDef root fill:#f3f4f6,stroke:#6b7280,stroke-width:2px,color:#111;
+
+  class A,B,C,D,E,F,G,F1,F2 root;
+  class C1,D1,E1,G2 library;
+  class E2,E3,G3,G4 executable;
+  class G1,F3 custom;
+```
+
+This is the clearest high-level reading of the root project: the main `Blender` project coordinates library creation first, and the final application target comes at the end through `source/creator`.
+
 ---
 
 ## 3) Where the final application target comes from
@@ -114,6 +159,36 @@ There are also important conditional variants in the same file:
 - on Windows, an additional **`blender-launcher`** target is created,
 - and if `WITH_BUILDINFO` is enabled, the `buildinfo` custom target and `buildinfoobj` object library are created and attached.
 
+### Diagram 2: Direct inputs of the `blender` target
+
+This diagram isolates the direct library and custom-target inputs that feed the final `blender` target.
+
+```mermaid
+flowchart LR
+  A[bf::blenkernel] --> Z[blender]
+  B[bf::blenlib] --> Z
+  C[bf::bmesh] --> Z
+  D[bf::depsgraph] --> Z
+  E[bf::dna] --> Z
+  F[bf::gpu] --> Z
+  G[bf::imbuf] --> Z
+  H[bf::render] --> Z
+  I[bf::sequencer] --> Z
+  J[bf::windowmanager] --> Z
+  K[buildinfo] --> Z
+  L[buildinfoobj] --> Z
+
+  classDef executable fill:#d6f5d6,stroke:#2e8b57,stroke-width:2px,color:#111;
+  classDef library fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111;
+  classDef custom fill:#fde2e4,stroke:#c2410c,stroke-width:2px,color:#111;
+
+  class Z executable;
+  class A,B,C,D,E,F,G,H,I,J,L library;
+  class K custom;
+```
+
+This is a simplified view of the main executable link target as declared in `source/creator/CMakeLists.txt`.
+
 ---
 
 ## 4) Main targets produced by the project
@@ -149,161 +224,78 @@ Representative examples from `source/blender/CMakeLists.txt` and child files inc
 - `bf_rna`
 - many `bf_editor_*`, `bf_io_*`, `bf_nodes_*`, and other subsystem libraries.
 
-`bf::rna` is not defined as a namespaced CMake alias target in this codebase. The RNA library target is created as `bf_rna` in `source/blender/makesrna/intern/CMakeLists.txt` via:
 
-```cmake
-blender_add_lib(bf_rna "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
-```
+### Diagram 3: Executable, library, and custom targets by kind
 
-So the correct target name to reference in target-level dependency declarations is `bf_rna`, not `bf::rna`.
-
----
-
-## 5) Mermaid flowcharts
-
-### 5.1 Top-level project and target flow
+This diagram groups representative targets by CMake target kind so the overall project shape is easier to scan.
 
 ```mermaid
 flowchart TD
-    A[project: Blender] --> B[Root CMake orchestration]
-    B --> C[intern]
-    B --> D[extern]
-    B --> E[source]
-    B --> F[tests]
-    B --> G[source/creator]
+  P[project: Blender]
 
-    C --> C1[internal support libraries]
-    D --> D1[third-party dependency libraries]
+  subgraph EXEC[Executable targets]
+    E1[blender]
+    E2[blender-launcher]
+    E3[blender-thumbnailer]
+    E4[datatoc]
+    E5[makesdna]
+    E6[makesrna]
+    E7[shader_tool]
+    E8[msgfmt]
+  end
 
-    E --> E1[bf_* subsystem libraries]
-    E --> E2[build tools: datatoc, makesdna, makesrna, shader_tool, msgfmt]
-    E --> E3[optional blender-thumbnailer]
+  subgraph LIBS[Library targets]
+    L1[bf::blenkernel]
+    L2[bf::blenlib]
+    L3[bf::windowmanager]
+    L4[bf::gpu]
+    L5[bf::render]
+    L6[bf::imbuf]
+    L7[bf::sequencer]
+    L8[bf::depsgraph]
+    L9[bf::dna]
+    L10[buildinfoobj]
+    L11[BlendThumb or blender_cpu_check optional]
+  end
 
-    C1 --> G
-    D1 --> G
-    E1 --> G
+  subgraph CUSTOM[Custom targets]
+    C1[buildinfo]
+    C2[coverage-report]
+    C3[coverage-show]
+    C4[coverage-reset]
+    C5[coverage-merge]
+  end
 
-    G --> G1[buildinfo]
-    G --> G2[buildinfoobj]
-    G --> G3[blender]
-    G --> G4[blender-launcher on Windows]
+  P --> E1
+  P --> L1
+  P --> C1
 
-    F --> F1[Python tests]
-    F --> F2[GTests]
-    F --> F3[coverage targets]
+  L1 --> E1
+  L2 --> E1
+  L3 --> E1
+  L4 --> E1
+  L5 --> E1
+  L6 --> E1
+  L7 --> E1
+  L8 --> E1
+  L9 --> E1
+  L10 --> E1
 
-    classDef executable fill:#d6f5d6,stroke:#2e8b57,stroke-width:2px,color:#111;
-    classDef library fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111;
-    classDef custom fill:#fde2e4,stroke:#c2410c,stroke-width:2px,color:#111;
-    classDef root fill:#f3f4f6,stroke:#6b7280,stroke-width:2px,color:#111;
+  C1 -. generated build metadata .-> E1
+  L11 -. optional platform or feature support .-> E1
 
-    class A,B,C,D,E,F,G,F1,F2 root;
-    class C1,D1,E1,G2 library;
-    class E2,E3,G3,G4 executable;
-    class G1,F3 custom;
+  classDef executable fill:#d6f5d6,stroke:#2e8b57,stroke-width:2px,color:#111;
+  classDef library fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111;
+  classDef custom fill:#fde2e4,stroke:#c2410c,stroke-width:2px,color:#111;
+  classDef root fill:#f3f4f6,stroke:#6b7280,stroke-width:2px,color:#111;
+
+  class P root;
+  class E1,E2,E3,E4,E5,E6,E7,E8 executable;
+  class L1,L2,L3,L4,L5,L6,L7,L8,L9,L10,L11 library;
+  class C1,C2,C3,C4,C5 custom;
 ```
 
-This is the clearest high-level reading of the root project: the main `Blender` project coordinates library creation first, and the final application target comes at the end through `source/creator`.
-
-### 5.2 Direct inputs of the `blender` target
-
-```mermaid
-flowchart LR
-    A[bf::blenkernel] --> Z[blender]
-    B[bf::blenlib] --> Z
-    C[bf::bmesh] --> Z
-    D[bf::depsgraph] --> Z
-    E[bf::dna] --> Z
-    F[bf::gpu] --> Z
-    G[bf::imbuf] --> Z
-    H[bf::render] --> Z
-    I[bf::sequencer] --> Z
-    J[bf::windowmanager] --> Z
-    K[buildinfo] --> Z
-    L[buildinfoobj] --> Z
-
-    classDef executable fill:#d6f5d6,stroke:#2e8b57,stroke-width:2px,color:#111;
-    classDef library fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111;
-    classDef custom fill:#fde2e4,stroke:#c2410c,stroke-width:2px,color:#111;
-
-    class Z executable;
-    class A,B,C,D,E,F,G,H,I,J,L library;
-    class K custom;
-```
-
-This second diagram is a simplified view of the main executable link target as declared in `source/creator/CMakeLists.txt`.
-
-### 5.3 Executable, library, and custom targets by kind
-
-The root project contains many more targets than the final app alone, so the diagram below groups them by **CMake target kind**.
-
-```mermaid
-flowchart TD
-    P[project: Blender]
-
-    subgraph EXEC[Executable targets]
-        E1[blender]
-        E2[blender-launcher]
-        E3[blender-thumbnailer]
-        E4[datatoc]
-        E5[makesdna]
-        E6[makesrna]
-        E7[shader_tool]
-        E8[msgfmt]
-    end
-
-    subgraph LIBS[Library targets]
-        L1[bf::blenkernel]
-        L2[bf::blenlib]
-        L3[bf::windowmanager]
-        L4[bf::gpu]
-        L5[bf::render]
-        L6[bf::imbuf]
-        L7[bf::sequencer]
-        L8[bf::depsgraph]
-        L9[bf::dna]
-        L10[buildinfoobj]
-        L11[BlendThumb or blender_cpu_check optional]
-    end
-
-    subgraph CUSTOM[Custom targets]
-        C1[buildinfo]
-        C2[coverage-report]
-        C3[coverage-show]
-        C4[coverage-reset]
-        C5[coverage-merge]
-    end
-
-    P --> E1
-    P --> L1
-    P --> C1
-
-    L1 --> E1
-    L2 --> E1
-    L3 --> E1
-    L4 --> E1
-    L5 --> E1
-    L6 --> E1
-    L7 --> E1
-    L8 --> E1
-    L9 --> E1
-    L10 --> E1
-
-    C1 -. generated build metadata .-> E1
-    L11 -. optional platform or feature support .-> E1
-
-    classDef executable fill:#d6f5d6,stroke:#2e8b57,stroke-width:2px,color:#111;
-    classDef library fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111;
-    classDef custom fill:#fde2e4,stroke:#c2410c,stroke-width:2px,color:#111;
-    classDef root fill:#f3f4f6,stroke:#6b7280,stroke-width:2px,color:#111;
-
-    class P root;
-    class E1,E2,E3,E4,E5,E6,E7,E8 executable;
-    class L1,L2,L3,L4,L5,L6,L7,L8,L9,L10,L11 library;
-    class C1,C2,C3,C4,C5 custom;
-```
-
-This grouped view matches the source layout:
+This grouped view matches the source layout.
 
 - **Executable targets** come from `source/creator/`, `source/blender/datatoc/`, `source/blender/makesdna/intern/`, `source/blender/makesrna/intern/`, `source/blender/gpu/shader_tool/`, and `source/blender/blentranslation/msgfmt/`.
 - **Library targets** are mostly the `bf::*` subsystem libraries plus a few special libraries such as `buildinfoobj` and optional platform helpers.
@@ -311,7 +303,7 @@ This grouped view matches the source layout:
 
 ---
 
-## 6) Source-level conclusion
+## 5) Source-level conclusion
 
 The root `CMakeLists.txt` defines **one top-level project**:
 

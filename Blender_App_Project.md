@@ -3,7 +3,7 @@
 > - Explains how Blender's root `CMakeLists.txt` defines the main `Blender` CMake project and mostly acts as a build orchestrator.
 > - Shows the default top-level path from `project(Blender)` into `intern/`, `extern/`, `source/`, `tests/`, and `source/creator/`.
 > - Identifies the main deliverable targets such as `blender`, `blender-launcher`, `blender-thumbnailer`, and the helper/code-generation tools.
-> - Includes Mermaid flowcharts showing the main project graph and the direct inputs of the `blender` target.
+> - Includes Mermaid flowcharts showing the main project graph, the direct inputs of the `blender` target, and target inventory tables.
 
 ## Table of Contents<!-- omit from toc -->
 
@@ -14,7 +14,11 @@
   - [Diagram 2: Direct inputs of the `blender` target](#diagram-2-direct-inputs-of-the-blender-target)
 - [4) Main targets produced by the project](#4-main-targets-produced-by-the-project)
   - [Diagram 3: Executable, library, and custom targets by kind](#diagram-3-executable-library-and-custom-targets-by-kind)
-- [5) Source-level conclusion](#5-source-level-conclusion)
+- [5) Targets Lists](#5-targets-lists)
+  - [Executable Targets](#executable-targets)
+  - [Library Targets](#library-targets)
+  - [Custom Targets](#custom-targets)
+- [6) Source-level conclusion](#6-source-level-conclusion)
 
 ---
 
@@ -30,11 +34,14 @@ The root file `{Root Blender Directory Name}/CMakeLists.txt` does **not** direct
 
 The main project declaration is straightforward.
 
-**File:** `CMakeLists.txt`
+**File:** `CMakeLists.txt` (lines 112-116)
 
 ```cmake
+blender_project_hack_pre()
+
 project(Blender)
-enable_testing()
+
+blender_project_hack_post()
 ```
 
 So the whole workspace is configured under one top-level CMake project named **`Blender`**.
@@ -45,9 +52,12 @@ So the whole workspace is configured under one top-level CMake project named **`
 
 The most important orchestration logic appears near the bottom of the root file.
 
-**File:** `CMakeLists.txt`
+**File:** `CMakeLists.txt` (lines 2744-2777)
 
 ```cmake
+# -----------------------------------------------------------------------------
+# Add Sub-Directories
+
 if(WITH_BLENDER)
   add_subdirectory(intern)
   add_subdirectory(extern)
@@ -55,9 +65,30 @@ if(WITH_BLENDER)
   # source after intern and extern to gather all
   # internal and external library information first, for test linking
   add_subdirectory(source)
+elseif(WITH_CYCLES_STANDALONE OR WITH_CYCLES_HYDRA_RENDER_DELEGATE)
+  add_subdirectory(intern/atomic)
+  add_subdirectory(intern/guardedalloc)
+  add_subdirectory(intern/libc_compat)
+  add_subdirectory(intern/sky)
+
+  add_subdirectory(intern/cycles)
+  if(WITH_CUDA_DYNLOAD)
+    add_subdirectory(extern/cuew)
+  endif()
+  if(WITH_HIP_DYNLOAD)
+    add_subdirectory(extern/hipew)
+  endif()
 endif()
 
+
+# -----------------------------------------------------------------------------
+# Add Testing Directory
+
 add_subdirectory(tests)
+
+
+# -----------------------------------------------------------------------------
+# Add Blender Application
 
 if(WITH_BLENDER)
   add_subdirectory(source/creator)
@@ -128,7 +159,7 @@ The actual desktop application target is created in `source/creator/CMakeLists.t
 
 A representative excerpt is:
 
-**File:** `source/creator/CMakeLists.txt`
+**File:** `source/creator/CMakeLists.txt` (lines 11-24)
 
 ```cmake
 set(LIB
@@ -139,13 +170,16 @@ set(LIB
   PRIVATE bf::dna
   PRIVATE bf::gpu
   PRIVATE bf::imbuf
+  PRIVATE bf::imbuf::movie
+  PRIVATE bf::intern::clog
+  PRIVATE bf::intern::guardedalloc
   PRIVATE bf::render
   PRIVATE bf::sequencer
   PRIVATE bf::windowmanager
 )
 ```
 
-And later:
+The actual target creation call appears later in the same file at line 342:
 
 ```cmake
 add_executable(blender ${EXETYPE} ${SRC})
@@ -314,7 +348,155 @@ This grouped view matches the source layout.
 
 ---
 
-## 5) Source-level conclusion
+## 5) Targets Lists
+
+This section collects the target list inventories.
+
+### Executable Targets
+
+Executable targets are listed in alphabetical order.
+
+| Target                | Defined In                                                | Role                                                             |
+| --------------------- | --------------------------------------------------------- | ---------------------------------------------------------------- |
+| `blender`             | `source/creator/CMakeLists.txt:342`                       | Main Blender application executable                              |
+| `blender-launcher`    | `source/creator/CMakeLists.txt:350`                       | Windows launcher target                                          |
+| `blender-thumbnailer` | `source/blender/blendthumb/CMakeLists.txt:67`             | Optional thumbnail helper for file managers and quick look tools |
+| `datatoc`             | `source/blender/datatoc/CMakeLists.txt:13`                | Tool that converts data into C sources                           |
+| `makesdna`            | `source/blender/makesdna/intern/CMakeLists.txt:86`        | Code-generation tool for Blender DNA metadata                    |
+| `makesrna`            | `source/blender/makesrna/intern/CMakeLists.txt:404`       | Code-generation tool for Blender RNA metadata                    |
+| `msgfmt`              | `source/blender/blentranslation/msgfmt/CMakeLists.txt:33` | Localization helper tool                                         |
+| `shader_tool`         | `source/blender/gpu/shader_tool/CMakeLists.txt:38`        | GPU shader helper tool                                           |
+
+### Library Targets
+
+Library targets are listed in alphabetical order.
+
+| Library Target                 | Alias                  | Defined In                                                   | Role                                                 |
+| ------------------------------ | ---------------------- | ------------------------------------------------------------ | ---------------------------------------------------- |
+| `bf_animrig`                   | bf::animrig            | `source/blender/animrig/CMakeLists.txt:76`                   | Animation rigging library                            |
+| `bf_asset_system`              | bf::asset_system       | `source/blender/asset_system/CMakeLists.txt:65`              | Asset metadata/indexing library                      |
+| `bf_blenfont`                  | bf::blenfont           | `source/blender/blenfont/CMakeLists.txt:63`                  | Font and text rendering library                      |
+| `bf_blenkernel`                | bf::blenkernel         | `source/blender/blenkernel/CMakeLists.txt:735`               | Core kernel/runtime subsystem library                |
+| `bf_blenlib`                   | bf::blenlib            | `source/blender/blenlib/CMakeLists.txt:495`                  | Core utility/foundation library                      |
+| `bf_blenloader`                | bf::blenloader         | `source/blender/blenloader/CMakeLists.txt:100`               | Blend file loading library                           |
+| `bf_blenloader_core`           | bf::blenloader_core    | `source/blender/blenloader_core/CMakeLists.txt:30`           | Minimal blend file loading core library              |
+| `bf_blenloader_test_util`      | none                   | `source/blender/blenloader/CMakeLists.txt:128`               | Internal subsystem library                           |
+| `bf_blentranslation`           | bf::blentranslation    | `source/blender/blentranslation/CMakeLists.txt:58`           | Translation and localization runtime library         |
+| `bf_bmesh`                     | bf::bmesh              | `source/blender/bmesh/CMakeLists.txt:199`                    | BMesh modeling/edit data library                     |
+| `bf_compositor`                | none                   | `source/blender/compositor/CMakeLists.txt:450`               | Compositor execution library                         |
+| `bf_compositor_shaders`        | none                   | `source/blender/compositor/CMakeLists.txt:411`               | Generated shader sources library                     |
+| `bf_depsgraph`                 | bf::depsgraph          | `source/blender/depsgraph/CMakeLists.txt:171`                | Dependency graph evaluation library                  |
+| `bf_dna`                       | bf::dna                | `source/blender/makesdna/intern/CMakeLists.txt:138`          | DNA schema/SDNA compatibility library                |
+| `bf_dna_blenlib`               | none                   | `source/blender/makesdna/intern/CMakeLists.txt:180`          | DNA to BLI conversion helper library                 |
+| `bf_dna_defaults`              | none                   | `source/blender/makesdna/intern/CMakeLists.txt:156`          | Generated DNA defaults data library                  |
+| `bf_draw`                      | bf::draw               | `source/blender/draw/CMakeLists.txt:977`                     | Viewport draw manager library                        |
+| `bf_draw_shaders`              | none                   | `source/blender/draw/CMakeLists.txt:897`                     | Internal subsystem library                           |
+| `bf_editor_animation`          | none                   | `source/blender/editors/animation/CMakeLists.txt:62`         | Editor subsystem library                             |
+| `bf_editor_armature`           | none                   | `source/blender/editors/armature/CMakeLists.txt:56`          | Editor subsystem library                             |
+| `bf_editor_asset`              | none                   | `source/blender/editors/asset/CMakeLists.txt:67`             | Editor subsystem library                             |
+| `bf_editor_curve`              | none                   | `source/blender/editors/curve/CMakeLists.txt:44`             | Editor subsystem library                             |
+| `bf_editor_curves`             | none                   | `source/blender/editors/curves/CMakeLists.txt:58`            | Editor subsystem library                             |
+| `bf_editor_datafiles`          | bf::editor::datafiles  | `source/blender/editors/datafiles/CMakeLists.txt:1073`       | Editor subsystem library                             |
+| `bf_editor_geometry`           | none                   | `source/blender/editors/geometry/CMakeLists.txt:41`          | Editor subsystem library                             |
+| `bf_editor_gizmo_library`      | none                   | `source/blender/editors/gizmo_library/CMakeLists.txt:51`     | Editor subsystem library                             |
+| `bf_editor_gpencil_legacy`     | none                   | `source/blender/editors/gpencil_legacy/CMakeLists.txt:43`    | Editor subsystem library                             |
+| `bf_editor_grease_pencil`      | none                   | `source/blender/editors/grease_pencil/CMakeLists.txt:63`     | Editor subsystem library                             |
+| `bf_editor_id_management`      | none                   | `source/blender/editors/id_management/CMakeLists.txt:26`     | Editor subsystem library                             |
+| `bf_editor_interface`          | none                   | `source/blender/editors/interface/CMakeLists.txt:158`        | Editor subsystem library                             |
+| `bf_editor_io`                 | none                   | `source/blender/editors/io/CMakeLists.txt:118`               | Editor subsystem library                             |
+| `bf_editor_lattice`            | none                   | `source/blender/editors/lattice/CMakeLists.txt:33`           | Editor subsystem library                             |
+| `bf_editor_mask`               | none                   | `source/blender/editors/mask/CMakeLists.txt:40`              | Editor subsystem library                             |
+| `bf_editor_mesh`               | none                   | `source/blender/editors/mesh/CMakeLists.txt:85`              | Editor subsystem library                             |
+| `bf_editor_metaball`           | none                   | `source/blender/editors/metaball/CMakeLists.txt:34`          | Editor subsystem library                             |
+| `bf_editor_object`             | none                   | `source/blender/editors/object/CMakeLists.txt:88`            | Editor subsystem library                             |
+| `bf_editor_physics`            | none                   | `source/blender/editors/physics/CMakeLists.txt:60`           | Editor subsystem library                             |
+| `bf_editor_pointcloud`         | none                   | `source/blender/editors/pointcloud/CMakeLists.txt:39`        | Editor subsystem library                             |
+| `bf_editor_render`             | none                   | `source/blender/editors/render/CMakeLists.txt:72`            | Editor subsystem library                             |
+| `bf_editor_scene`              | none                   | `source/blender/editors/scene/CMakeLists.txt:30`             | Editor subsystem library                             |
+| `bf_editor_screen`             | none                   | `source/blender/editors/screen/CMakeLists.txt:61`            | Editor subsystem library                             |
+| `bf_editor_sculpt_paint`       | none                   | `source/blender/editors/sculpt_paint/CMakeLists.txt:229`     | Editor subsystem library                             |
+| `bf_editor_sound`              | none                   | `source/blender/editors/sound/CMakeLists.txt:40`             | Editor subsystem library                             |
+| `bf_editor_space_action`       | none                   | `source/blender/editors/space_action/CMakeLists.txt:44`      | Editor subsystem library                             |
+| `bf_editor_space_api`          | none                   | `source/blender/editors/space_api/CMakeLists.txt:49`         | Editor subsystem library                             |
+| `bf_editor_space_buttons`      | none                   | `source/blender/editors/space_buttons/CMakeLists.txt:48`     | Editor subsystem library                             |
+| `bf_editor_space_clip`         | none                   | `source/blender/editors/space_clip/CMakeLists.txt:56`        | Editor subsystem library                             |
+| `bf_editor_space_console`      | none                   | `source/blender/editors/space_console/CMakeLists.txt:38`     | Editor subsystem library                             |
+| `bf_editor_space_file`         | none                   | `source/blender/editors/space_file/CMakeLists.txt:107`       | Editor subsystem library                             |
+| `bf_editor_space_graph`        | none                   | `source/blender/editors/space_graph/CMakeLists.txt:46`       | Editor subsystem library                             |
+| `bf_editor_space_image`        | none                   | `source/blender/editors/space_image/CMakeLists.txt:67`       | Editor subsystem library                             |
+| `bf_editor_space_info`         | none                   | `source/blender/editors/space_info/CMakeLists.txt:44`        | Editor subsystem library                             |
+| `bf_editor_space_nla`          | none                   | `source/blender/editors/space_nla/CMakeLists.txt:41`         | Editor subsystem library                             |
+| `bf_editor_space_node`         | none                   | `source/blender/editors/space_node/CMakeLists.txt:94`        | Editor subsystem library                             |
+| `bf_editor_space_outliner`     | none                   | `source/blender/editors/space_outliner/CMakeLists.txt:150`   | Editor subsystem library                             |
+| `bf_editor_space_script`       | none                   | `source/blender/editors/space_script/CMakeLists.txt:41`      | Editor subsystem library                             |
+| `bf_editor_space_sequencer`    | none                   | `source/blender/editors/space_sequencer/CMakeLists.txt:71`   | Editor subsystem library                             |
+| `bf_editor_space_spreadsheet`  | none                   | `source/blender/editors/space_spreadsheet/CMakeLists.txt:59` | Editor subsystem library                             |
+| `bf_editor_space_statusbar`    | none                   | `source/blender/editors/space_statusbar/CMakeLists.txt:32`   | Editor subsystem library                             |
+| `bf_editor_space_text`         | none                   | `source/blender/editors/space_text/CMakeLists.txt:55`        | Editor subsystem library                             |
+| `bf_editor_space_topbar`       | none                   | `source/blender/editors/space_topbar/CMakeLists.txt:32`      | Editor subsystem library                             |
+| `bf_editor_space_userpref`     | none                   | `source/blender/editors/space_userpref/CMakeLists.txt:34`    | Editor subsystem library                             |
+| `bf_editor_space_view3d`       | none                   | `source/blender/editors/space_view3d/CMakeLists.txt:110`     | Editor subsystem library                             |
+| `bf_editor_transform`          | none                   | `source/blender/editors/transform/CMakeLists.txt:126`        | Editor subsystem library                             |
+| `bf_editor_undo`               | none                   | `source/blender/editors/undo/CMakeLists.txt:34`              | Editor subsystem library                             |
+| `bf_editor_util`               | none                   | `source/blender/editors/util/CMakeLists.txt:133`             | Editor subsystem library                             |
+| `bf_editor_uvedit`             | none                   | `source/blender/editors/uvedit/CMakeLists.txt:55`            | Editor subsystem library                             |
+| `bf_freestyle`                 | none                   | `source/blender/freestyle/CMakeLists.txt:577`                | Freestyle NPR rendering library                      |
+| `bf_functions`                 | bf::functions          | `source/blender/functions/CMakeLists.txt:60`                 | Function graph utility library                       |
+| `bf_geometry`                  | bf::geometry           | `source/blender/geometry/CMakeLists.txt:133`                 | Geometry processing library                          |
+| `bf_gpu`                       | bf::gpu                | `source/blender/gpu/CMakeLists.txt:882`                      | GPU abstraction and rendering support library        |
+| `bf_gpu_shaders`               | none                   | `source/blender/gpu/CMakeLists.txt:837`                      | Generated shader sources library                     |
+| `bf_ikplugin`                  | none                   | `source/blender/ikplugin/CMakeLists.txt:56`                  | Inverse kinematics plugin library                    |
+| `bf_imbuf`                     | bf::imbuf              | `source/blender/imbuf/CMakeLists.txt:146`                    | Image buffer and image I/O library                   |
+| `bf_imbuf_cineon`              | none                   | `source/blender/imbuf/intern/cineon/CMakeLists.txt:38`       | Image buffer submodule library                       |
+| `bf_imbuf_movie`               | bf::imbuf::movie       | `source/blender/imbuf/movie/CMakeLists.txt:47`               | Image buffer submodule library                       |
+| `bf_imbuf_opencolorio`         | bf::imbuf::opencolorio | `source/blender/imbuf/opencolorio/CMakeLists.txt:88`         | Image buffer submodule library                       |
+| `bf_imbuf_opencolorio_shaders` | none                   | `source/blender/imbuf/opencolorio/CMakeLists.txt:116`        | Image buffer submodule library                       |
+| `bf_imbuf_openexr`             | none                   | `source/blender/imbuf/intern/openexr/CMakeLists.txt:40`      | Image buffer submodule library                       |
+| `bf_imbuf_openimageio`         | none                   | `source/blender/imbuf/intern/oiio/CMakeLists.txt:34`         | Image buffer submodule library                       |
+| `bf_io_alembic`                | none                   | `source/blender/io/alembic/CMakeLists.txt:90`                | Import/export subsystem library                      |
+| `bf_io_common`                 | none                   | `source/blender/io/common/CMakeLists.txt:44`                 | Import/export subsystem library                      |
+| `bf_io_csv`                    | none                   | `source/blender/io/csv/CMakeLists.txt:31`                    | Import/export subsystem library                      |
+| `bf_io_fbx`                    | none                   | `source/blender/io/fbx/CMakeLists.txt:50`                    | Import/export subsystem library                      |
+| `bf_io_grease_pencil`          | none                   | `source/blender/io/grease_pencil/CMakeLists.txt:56`          | Import/export subsystem library                      |
+| `bf_io_ply`                    | none                   | `source/blender/io/ply/CMakeLists.txt:61`                    | Import/export subsystem library                      |
+| `bf_io_stl`                    | none                   | `source/blender/io/stl/CMakeLists.txt:51`                    | Import/export subsystem library                      |
+| `bf_io_usd`                    | none                   | `source/blender/io/usd/CMakeLists.txt:222`                   | Import/export subsystem library                      |
+| `bf_io_wavefront_obj`          | none                   | `source/blender/io/wavefront_obj/CMakeLists.txt:62`          | Import/export subsystem library                      |
+| `bf_modifiers`                 | none                   | `source/blender/modifiers/CMakeLists.txt:211`                | Modifier stack library                               |
+| `bf_nodes`                     | bf::nodes              | `source/blender/nodes/CMakeLists.txt:215`                    | Node system core library                             |
+| `bf_nodes_composite`           | none                   | `source/blender/nodes/composite/CMakeLists.txt:156`          | Nodes subsystem library                              |
+| `bf_nodes_function`            | none                   | `source/blender/nodes/function/CMakeLists.txt:102`           | Nodes subsystem library                              |
+| `bf_nodes_geometry`            | none                   | `source/blender/nodes/geometry/CMakeLists.txt:391`           | Nodes subsystem library                              |
+| `bf_nodes_shader`              | none                   | `source/blender/nodes/shader/CMakeLists.txt:181`             | Nodes subsystem library                              |
+| `bf_nodes_texture`             | none                   | `source/blender/nodes/texture/CMakeLists.txt:65`             | Nodes subsystem library                              |
+| `bf_python`                    | none                   | `source/blender/python/intern/CMakeLists.txt:356`            | Python integration library                           |
+| `bf_python_bmesh`              | none                   | `source/blender/python/bmesh/CMakeLists.txt:54`              | Python integration library                           |
+| `bf_python_ext`                | none                   | `source/blender/python/generic/CMakeLists.txt:52`            | Python integration library                           |
+| `bf_python_gpu`                | none                   | `source/blender/python/gpu/CMakeLists.txt:72`                | Python integration library                           |
+| `bf_python_mathutils`          | none                   | `source/blender/python/mathutils/CMakeLists.txt:52`          | Python integration library                           |
+| `bf_render_hydra`              | none                   | `source/blender/render/hydra/CMakeLists.txt:101`             | Internal subsystem library                           |
+| `bf_rna`                       | none                   | `source/blender/makesrna/intern/CMakeLists.txt:477`          | RNA reflection and property access library           |
+| `bf_sequencer`                 | bf::sequencer          | `source/blender/sequencer/CMakeLists.txt:141`                | Video sequence editor library                        |
+| `bf_shader_fx`                 | none                   | `source/blender/shader_fx/CMakeLists.txt:52`                 | Shader effects library                               |
+| `bf_simulation`                | none                   | `source/blender/simulation/CMakeLists.txt:40`                | Simulation systems library                           |
+| `buildinfoobj`                 | none                   | `source/creator/CMakeLists.txt:292`                          | Object library containing build metadata object code |
+
+### Custom Targets
+
+Custom targets are listed in alphabetical order.
+
+| Target            | Defined In                          | Role                                                   |
+| ----------------- | ----------------------------------- | ------------------------------------------------------ |
+| `buildinfo`       | `source/creator/CMakeLists.txt:256` | Custom target that generates build information headers |
+| `coverage-merge`  | `tests/CMakeLists.txt:110`          | Coverage reporting and maintenance target              |
+| `coverage-report` | `tests/CMakeLists.txt:90`           | Coverage reporting and maintenance target              |
+| `coverage-reset`  | `tests/CMakeLists.txt:100`          | Coverage reporting and maintenance target              |
+| `coverage-show`   | `tests/CMakeLists.txt:95`           | Coverage reporting and maintenance target              |
+| `locales`         | `source/creator/CMakeLists.txt:521` | Custom target that compiles translation files          |
+
+---
+
+## 6) Source-level conclusion
 
 The root `CMakeLists.txt` defines **one top-level project**:
 
@@ -350,6 +532,13 @@ So the best mental model is:
 3. `source/blender/CMakeLists.txt`
 4. `source/creator/CMakeLists.txt`
 5. `tests/CMakeLists.txt`
+
+
+
+
+
+
+
 
 
 

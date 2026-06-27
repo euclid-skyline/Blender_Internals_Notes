@@ -250,6 +250,8 @@ flowchart LR
   class R transitive;
 ```
 
+The direct group shows the libraries and build targets that `blender` links immediately, while the transitive group shows the RNA layer and the two important consumer libraries that feed into that direct set.
+
 This is a simplified view of the main executable link target as declared in `source/creator/CMakeLists.txt`.
 
 `bf_rna` sits one layer below `blender`: it is not linked directly by the executable, but it is required by libraries such as `bf::blenkernel`, `bf::depsgraph`, `bf::windowmanager`, `bf::blenloader`, and `bf::nodes`. In the direct `blender` link set, `bf::blenloader` feeds `bf::blenkernel`, `bf::sequencer`, and `bf::windowmanager`, while `bf::nodes` feeds `bf::blenkernel`, `bf::render`, `bf::sequencer`, and `bf::windowmanager`. Those libraries are part of the dependency graph around `${LIB}`, so they bring the RNA layer into the build graph before `blender` links the final library bundle.

@@ -728,11 +728,13 @@ Blender's Attribute API (`BKE_attribute.hh`) builds on top of `CustomData` to pr
 
 ## 10) Short answers
 
-**Q: Why does every `.blend` file contain a full copy of the SDNA?**  
-So any version of Blender can open any `.blend` file. The loader compares the file's embedded SDNA to the running binary's SDNA and reconstructs each struct accordingly, without needing an external schema file.
+**Q: Why does every `.blend` file contain a full copy of the SDNA?**
 
-**Q: Does that mean even an empty `.blend` file is at least `DNAlen` bytes in size?**  
-Yes. A `.blend` file is a sequence of `BHead` blocks and every valid file must include a `DNA1` block carrying the full SDNA blob, regardless of whether it contains any objects, scenes, or other data-blocks:
+**A:** So any version of Blender can open any `.blend` file. The loader compares the file's embedded SDNA to the running binary's SDNA and reconstructs each struct accordingly, without needing an external schema file.
+
+**Q: Does that mean even an empty `.blend` file is at least `DNAlen` bytes in size?**
+
+**A:** Yes. A `.blend` file is a sequence of `BHead` blocks and every valid file must include a `DNA1` block carrying the full SDNA blob, regardless of whether it contains any objects, scenes, or other data-blocks:
 
 ```text
 [12-byte file header: "BLENDER" + ptr-size + endian + version]
@@ -748,20 +750,25 @@ $$\text{file size} \geq 12 + \text{sizeof}(BHead) + DNAlen + \text{sizeof}(BHead
 
 `DNAlen` is build-dependent and should be read from the generated `dna.cc` in your current build tree rather than hard-coded from another version. In practice this keeps the minimum `.blend` size in the rough `DNA1`-dominant range (typically around the low hundreds of KB), even for nearly empty files. The `DNA1` block is not optional; `blenloader` requires it to decode any other block in the file, so Blender writes it unconditionally. This is the price paid for complete self-sufficiency: a `.blend` file is independently decodable by any Blender version without external schema information.
 
-**Q: Why can't DNA headers use `#define` for array sizes?**  
-`makesdna` is a simple parser that does not evaluate preprocessor directives. Array sizes must be literal integer constants so `makesdna` can compute the exact byte size of each field.
+**Q: Why can't DNA headers use `#define` for array sizes?**
 
-**Q: What happens when a field is added to a struct?**  
-The old `.blend` file's SDNA will not have it. `DNA_struct_get_compareflags` marks the struct as `SDNA_CMP_NOT_EQUAL`, and `DNA_struct_reconstruct` zero-initializes the new field. BKE versioning code (in `versioning_XXX.cc`) then migrates the data to a sensible default if zero is not appropriate.
+**A:** `makesdna` is a simple parser that does not evaluate preprocessor directives. Array sizes must be literal integer constants so `makesdna` can compute the exact byte size of each field.
 
-**Q: What is the relationship between DNA and RNA?**  
-DNA defines the *binary layout* (on-disk and in-memory struct fields). RNA (`source/blender/makesrna/`) builds a higher-level *reflection layer* on top of DNA, adding labels, tooltips, value ranges, Python binding, and undo support. RNA reads and writes through DNA fields but does not own them.
+**Q: What happens when a field is added to a struct?**
 
-**Q: What is `CustomData` and why is it not a plain array in `Mesh`?**  
-`CustomData` is an open-ended attribute-storage system. Storing attributes as named typed layers in `CustomData` (rather than as fixed struct fields) allows any number of UV maps, vertex-color layers, or custom float attributes without adding new DNA fields — and new layer types can be added without breaking old files.
+**A:** The old `.blend` file's SDNA will not have it. `DNA_struct_get_compareflags` marks the struct as `SDNA_CMP_NOT_EQUAL`, and `DNA_struct_reconstruct` zero-initializes the new field. BKE versioning code (in `versioning_XXX.cc`) then migrates the data to a sensible default if zero is not appropriate.
 
-**Q: What does `DNA_DEFINE_CXX_METHODS` do?**  
-It deletes the copy constructor and copy-assignment operator to prevent accidental C++ value-copy semantics on DNA structs (which must be shallow-copied via `memcpy` / `ShallowDataConstRef`). It also provides a `ShallowDataConstRef`-based constructor for explicitly requested shallow copies.
+**Q: What is the relationship between DNA and RNA?**
+
+**A:** DNA defines the *binary layout* (on-disk and in-memory struct fields). RNA (`source/blender/makesrna/`) builds a higher-level *reflection layer* on top of DNA, adding labels, tooltips, value ranges, Python binding, and undo support. RNA reads and writes through DNA fields but does not own them.
+
+**Q: What is `CustomData` and why is it not a plain array in `Mesh`?**
+
+**A:** `CustomData` is an open-ended attribute-storage system. Storing attributes as named typed layers in `CustomData` (rather than as fixed struct fields) allows any number of UV maps, vertex-color layers, or custom float attributes without adding new DNA fields — and new layer types can be added without breaking old files.
+
+**Q: What does `DNA_DEFINE_CXX_METHODS` do?**
+
+**A:** It deletes the copy constructor and copy-assignment operator to prevent accidental C++ value-copy semantics on DNA structs (which must be shallow-copied via `memcpy` / `ShallowDataConstRef`). It also provides a `ShallowDataConstRef`-based constructor for explicitly requested shallow copies.
 
 ---
 

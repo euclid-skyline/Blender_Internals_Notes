@@ -65,7 +65,7 @@
 
 ## 2) What is DNA?
 
-**DNA** stands for **Data Naming and Addressing**. It is Blender's binary **Data Definition Layer** — more precisely, it is the subsystem responsible for defining, encoding, and versioning every C/C++ struct that Blender writes to a `.blend` file. It is the schema embedded in every .blend file that describes every struct layout (names, types, sizes) so the file loader can reconstruct data correctly even across versions.
+DNA stands for **Data Naming and Addressing**. It is Blender's binary **Data Definition Layer** — more precisely, it is the subsystem responsible for defining, encoding, and versioning every C struct that Blender writes to a `.blend` file. It is the schema embedded in every .blend file that describes every struct layout (names, types, sizes) so the file loader can reconstruct data correctly even across versions.
 
 The name comes from its acronym expansion: **Struct DNA** (`SDNA`). All the headers live in:
 
@@ -88,6 +88,13 @@ DNA deliberately does **not** know about:
 - the file format framing (`BHead` blocks, compression) — that is `blenloader`.
 
 DNA is a **purely structural description**: types, names, sizes, and relationships.
+
+> [!IMPORTANT]
+> DNA uses **C struct semantics only**, not C++ features. This constraint exists because DNA structs are binary-serialized to `.blend` files — they must be portable across platforms, architectures, and Blender versions without hidden layout variations. C++ features like virtual functions, inheritance, templates, or non-POD members would introduce vtable pointers, vtable offsets, or other runtime metadata that corrupts the binary payload and breaks file portability.
+>
+> Even though DNA headers live in the C++ codebase and use modern C++ syntax like `= nullptr` for initialization, these are C-style initializers. The `nullptr` is simply a C null pointer (zero address) — the same concept as `NULL` or `(void*)0` in C, just expressed in modern C++ syntax. When serialized to a `.blend` file, `nullptr` becomes `0` (a null pointer value), which is portable and can be deserialized on any platform.
+>
+> For these reasons, DNA struct definitions are restricted to plain C constructs: basic types (`int`, `float`, `char`), arrays, pointers, and other structs. No virtual methods, no templates, no inheritance hierarchies — only the minimum necessary for binary data serialization.
 
 ---
 
